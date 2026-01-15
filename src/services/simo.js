@@ -287,11 +287,16 @@ const callLLMDirect = async (messages) => {
  * 通过本地后端代理调用 API（推荐，API Key 安全）
  */
 const callLLMProxy = async (message, history) => {
-  // 从 localStorage 获取当前选择的模型
-  const currentModel = localStorage.getItem('simo_current_model') || 'zhipu'
+  // 从 localStorage 获取 API 配置
+  const savedConfig = localStorage.getItem('simo_api_config')
+  const apiConfig = savedConfig ? JSON.parse(savedConfig) : {}
+  const currentModel = apiConfig.provider || 'zhipu'
+  const apiKey = apiConfig.apiKey || ''
   
   // 动态获取 API 地址（每次调用时读取最新配置）
   const apiBase = getApiBase()
+  
+  console.log('📋 API 配置:', { provider: currentModel, hasKey: !!apiKey })
   
   const response = await fetch(`${apiBase}/chat`, {
     method: 'POST',
@@ -302,7 +307,8 @@ const callLLMProxy = async (message, history) => {
       message,
       history,
       memberId: memory.getCurrentMember()?.id,
-      provider: currentModel  // 使用用户选择的模型
+      provider: currentModel,
+      apiKey: apiKey  // 传递 API Key 给后端
     })
   })
   
