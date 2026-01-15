@@ -609,69 +609,122 @@ onMounted(() => {
   height: 20px;
 }
 
-/* 顶部一字眉灯光 */
+/* 顶部一字眉灯光 - iOS 18 Siri 风格 */
 .light-bar-wrapper {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 4px;
+  height: 6px;
   display: flex;
   justify-content: center;
-  padding: 0 10%;
+  padding: 0 5%;
+  z-index: 1000;
 }
 
 .light-bar {
   width: 100%;
-  max-width: 600px;
+  max-width: 800px;
   height: 100%;
-  background: var(--jiyue-blue-dim);
   position: relative;
-  overflow: hidden;
-  animation: light-bar-breathe 3s ease-in-out infinite;
+  overflow: visible;
+  border-radius: 3px;
+  /* 默认状态：多彩渐变流动 */
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    var(--siri-purple) 15%,
+    var(--siri-blue) 35%,
+    var(--siri-cyan) 50%,
+    var(--siri-blue) 65%,
+    var(--siri-purple) 85%,
+    transparent 100%);
+  background-size: 200% 100%;
+  animation: light-bar-flow 4s linear infinite, light-bar-breathe 3s ease-in-out infinite;
 }
 
 .light-bar-glow {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: var(--light-bar-gradient);
-  filter: blur(4px);
+  top: -4px;
+  left: -2%;
+  right: -2%;
+  bottom: -4px;
+  background: inherit;
+  filter: blur(12px);
+  opacity: 0.8;
+  border-radius: 6px;
 }
 
+/* 监听状态 - 绿色脉动 */
 .light-bar.is-listening {
-  background: var(--listening-color);
-  animation: none;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    var(--listening-color) 20%, 
+    #4ade80 50%,
+    var(--listening-color) 80%, 
+    transparent 100%);
+  background-size: 200% 100%;
+  animation: light-bar-flow 2s linear infinite;
 }
 
 .light-bar.is-listening .light-bar-glow {
-  background: linear-gradient(90deg, transparent 0%, var(--listening-color) 20%, var(--listening-color) 80%, transparent 100%);
+  background: var(--listening-color);
+  filter: blur(16px);
+  opacity: 0.9;
 }
 
+/* 思考状态 - 橙色扫光 */
 .light-bar.is-thinking {
-  background: var(--thinking-color);
-  animation: thinking-pulse 0.8s ease-in-out infinite;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    var(--thinking-color) 20%, 
+    #fbbf24 50%,
+    var(--thinking-color) 80%, 
+    transparent 100%);
+  background-size: 300% 100%;
+  animation: light-bar-flow 1.5s linear infinite, thinking-pulse 0.6s ease-in-out infinite;
 }
 
 .light-bar.is-thinking .light-bar-glow {
-  background: linear-gradient(90deg, transparent 0%, var(--thinking-color) 20%, var(--thinking-color) 80%, transparent 100%);
+  background: var(--thinking-color);
+  filter: blur(20px);
+  opacity: 1;
 }
 
+/* 思考时的扫光效果 */
 .light-bar-scan {
   position: absolute;
-  top: 0;
+  top: -2px;
   left: 0;
-  width: 30%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent);
-  animation: scan-line 1.5s ease-in-out infinite;
+  width: 40%;
+  height: calc(100% + 4px);
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(255,255,255,0.4) 30%,
+    rgba(255,255,255,0.8) 50%,
+    rgba(255,255,255,0.4) 70%,
+    transparent 100%);
+  animation: scan-line 2s ease-in-out infinite;
+  border-radius: 3px;
 }
 
+/* 说话状态 - 蓝色波动 */
 .light-bar.is-speaking {
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    var(--siri-blue) 15%,
+    var(--siri-cyan) 35%,
+    var(--speaking-color) 50%,
+    var(--siri-cyan) 65%,
+    var(--siri-blue) 85%,
+    transparent 100%);
+  background-size: 200% 100%;
+  animation: light-bar-flow 3s linear infinite, light-bar-breathe 1.5s ease-in-out infinite;
+}
+
+.light-bar.is-speaking .light-bar-glow {
   background: var(--speaking-color);
-  animation: light-bar-breathe 1.5s ease-in-out infinite;
+  filter: blur(18px);
+  opacity: 0.9;
 }
 
 /* 主交互区域 */
@@ -685,99 +738,182 @@ onMounted(() => {
   padding: 60px 20px;
 }
 
-/* Simo 核心视觉 - 圆环设计 */
+/* Simo 核心视觉 - Siri 风格光圈 */
 .simo-visual {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: 24px;
   cursor: pointer;
+  position: relative;
+}
+
+/* 外层光晕背景 */
+.simo-visual::before {
+  content: '';
+  position: absolute;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    rgba(0, 212, 255, 0.15) 0%,
+    rgba(168, 85, 247, 0.1) 30%,
+    rgba(59, 130, 246, 0.05) 50%,
+    transparent 70%);
+  animation: glow-pulse 4s ease-in-out infinite;
+  pointer-events: none;
 }
 
 .simo-ring {
-  width: 160px;
-  height: 160px;
+  width: 180px;
+  height: 180px;
   border-radius: 50%;
-  border: 2px solid var(--jiyue-blue);
+  border: 2.5px solid transparent;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  /* 多彩渐变边框 */
+  background: 
+    linear-gradient(var(--bg-primary), var(--bg-primary)) padding-box,
+    linear-gradient(135deg, var(--siri-cyan), var(--siri-blue), var(--siri-purple), var(--siri-pink)) border-box;
   animation: core-breathe 4s ease-in-out infinite;
-  transition: all 0.3s ease;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  /* 多层光晕 */
+  box-shadow: 
+    0 0 40px rgba(0, 212, 255, 0.3),
+    0 0 80px rgba(168, 85, 247, 0.2),
+    0 0 120px rgba(59, 130, 246, 0.1),
+    inset 0 0 40px rgba(0, 212, 255, 0.05);
 }
 
 .simo-ring:hover {
-  transform: scale(1.02);
+  transform: scale(1.05);
+  box-shadow: 
+    0 0 50px rgba(0, 212, 255, 0.4),
+    0 0 100px rgba(168, 85, 247, 0.3),
+    0 0 150px rgba(59, 130, 246, 0.15),
+    inset 0 0 50px rgba(0, 212, 255, 0.08);
 }
 
 .ring-inner {
-  width: 80%;
-  height: 80%;
+  width: 85%;
+  height: 85%;
   border-radius: 50%;
-  background: radial-gradient(circle, var(--jiyue-blue-dim) 0%, transparent 70%);
+  background: radial-gradient(circle, 
+    rgba(0, 212, 255, 0.1) 0%, 
+    rgba(168, 85, 247, 0.05) 40%,
+    transparent 70%);
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
 }
 
-.core-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--jiyue-blue);
-  box-shadow: 0 0 20px var(--jiyue-blue-glow);
-}
-
-/* 监听状态 */
-.simo-ring.is-listening {
-  border-color: var(--listening-color);
-  box-shadow: 
-    0 0 30px var(--listening-glow),
-    0 0 60px var(--listening-glow);
-}
-
-.simo-ring.is-listening .core-dot {
-  background: var(--listening-color);
-  box-shadow: 0 0 20px var(--listening-glow);
-}
-
-.simo-ring.is-listening .ring-inner {
-  background: radial-gradient(circle, rgba(0, 255, 136, 0.15) 0%, transparent 70%);
-}
-
-/* 思考状态 */
-.simo-ring.is-thinking {
-  border-color: var(--thinking-color);
-  animation: thinking-pulse 0.8s ease-in-out infinite;
-  box-shadow: 0 0 30px var(--thinking-glow);
-}
-
-.simo-ring.is-thinking .core-dot {
-  background: var(--thinking-color);
-  box-shadow: 0 0 20px var(--thinking-glow);
-}
-
-/* 说话状态 */
-.simo-ring.is-speaking {
-  border-color: var(--speaking-color);
-  animation: core-breathe 2s ease-in-out infinite;
-}
-
-/* 监听波纹 */
-.ripple {
+/* 内部旋转光环 */
+.ring-inner::before {
+  content: '';
   position: absolute;
-  top: 0;
-  left: 0;
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  border: 1px solid var(--listening-color);
-  animation: listening-ripple 2s ease-out infinite;
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  animation: orb-rotate 20s linear infinite;
 }
 
-.ripple.delay-1 { animation-delay: 0.4s; }
-.ripple.delay-2 { animation-delay: 0.8s; }
+.core-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--siri-cyan), var(--jiyue-blue));
+  box-shadow: 
+    0 0 20px var(--jiyue-blue-glow),
+    0 0 40px rgba(0, 212, 255, 0.4);
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* 监听状态 - 绿色光晕 */
+.simo-ring.is-listening {
+  background: 
+    linear-gradient(var(--bg-primary), var(--bg-primary)) padding-box,
+    linear-gradient(135deg, #22c55e, #4ade80, #86efac) border-box;
+  box-shadow: 
+    0 0 50px var(--listening-glow),
+    0 0 100px rgba(34, 197, 94, 0.4),
+    0 0 150px rgba(34, 197, 94, 0.2),
+    inset 0 0 40px rgba(34, 197, 94, 0.1);
+}
+
+.simo-ring.is-listening .core-dot {
+  background: linear-gradient(135deg, #22c55e, #4ade80);
+  box-shadow: 
+    0 0 25px var(--listening-glow),
+    0 0 50px rgba(34, 197, 94, 0.5);
+}
+
+.simo-ring.is-listening .ring-inner {
+  background: radial-gradient(circle, rgba(34, 197, 94, 0.15) 0%, transparent 70%);
+}
+
+/* 思考状态 - 橙色脉动 */
+.simo-ring.is-thinking {
+  background: 
+    linear-gradient(var(--bg-primary), var(--bg-primary)) padding-box,
+    linear-gradient(135deg, #f59e0b, #fbbf24, #fcd34d) border-box;
+  animation: thinking-pulse 0.8s ease-in-out infinite;
+  box-shadow: 
+    0 0 50px var(--thinking-glow),
+    0 0 100px rgba(245, 158, 11, 0.4),
+    inset 0 0 40px rgba(245, 158, 11, 0.1);
+}
+
+.simo-ring.is-thinking .core-dot {
+  background: linear-gradient(135deg, #f59e0b, #fbbf24);
+  box-shadow: 
+    0 0 25px var(--thinking-glow),
+    0 0 50px rgba(245, 158, 11, 0.5);
+}
+
+.simo-ring.is-thinking .ring-inner::before {
+  animation: thinking-rotate 2s linear infinite;
+}
+
+/* 说话状态 - 蓝色波动 */
+.simo-ring.is-speaking {
+  background: 
+    linear-gradient(var(--bg-primary), var(--bg-primary)) padding-box,
+    linear-gradient(135deg, var(--siri-blue), var(--siri-cyan), var(--siri-blue)) border-box;
+  animation: speaking-wave 2s ease-in-out infinite;
+  box-shadow: 
+    0 0 50px var(--speaking-glow),
+    0 0 100px rgba(59, 130, 246, 0.4),
+    0 0 150px rgba(6, 182, 212, 0.2),
+    inset 0 0 40px rgba(59, 130, 246, 0.1);
+}
+
+.simo-ring.is-speaking .core-dot {
+  background: linear-gradient(135deg, var(--siri-blue), var(--siri-cyan));
+  box-shadow: 
+    0 0 25px var(--speaking-glow),
+    0 0 50px rgba(59, 130, 246, 0.5);
+}
+
+/* 监听波纹 - 更柔和 */
+.ripple {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 180px;
+  height: 180px;
+  margin: -90px 0 0 -90px;
+  border-radius: 50%;
+  border: 2px solid var(--listening-color);
+  animation: listening-ripple 2.5s ease-out infinite;
+  opacity: 0;
+}
+
+.ripple.delay-1 { animation-delay: 0.5s; }
+.ripple.delay-2 { animation-delay: 1s; }
 
 /* Simo 文字标识 */
 .simo-label {

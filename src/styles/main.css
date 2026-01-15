@@ -1,34 +1,46 @@
-/* Hi Simo - 极越风格全局样式 */
-/* 设计语言：Futuristic + Robotic + Emotional */
+/* Hi Simo - 苹果 Siri 风格全局样式 */
+/* 设计语言：Futuristic + Emotional + Apple-like */
 
 :root {
-  /* 极越深色主题 - 纯黑底 */
+  /* 深色主题 - 纯黑底 */
   --bg-primary: #000000;
   --bg-secondary: #0a0a0a;
   --bg-tertiary: #141414;
   
   /* 文字层级 */
   --text-primary: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.6);
+  --text-secondary: rgba(255, 255, 255, 0.7);
   --text-tertiary: rgba(255, 255, 255, 0.4);
+  
+  /* Siri 风格渐变色 - 多彩光晕 */
+  --siri-purple: #a855f7;
+  --siri-blue: #3b82f6;
+  --siri-cyan: #06b6d4;
+  --siri-green: #10b981;
+  --siri-pink: #ec4899;
+  --siri-orange: #f97316;
   
   /* 极越蓝 - 核心品牌色 */
   --jiyue-blue: #00d4ff;
-  --jiyue-blue-glow: rgba(0, 212, 255, 0.5);
-  --jiyue-blue-dim: rgba(0, 212, 255, 0.2);
+  --jiyue-blue-glow: rgba(0, 212, 255, 0.6);
+  --jiyue-blue-dim: rgba(0, 212, 255, 0.15);
   
-  /* 状态色 */
-  --listening-color: #00ff88;
-  --listening-glow: rgba(0, 255, 136, 0.5);
-  --thinking-color: #ffaa00;
-  --thinking-glow: rgba(255, 170, 0, 0.4);
-  --speaking-color: #00d4ff;
+  /* 状态色 - 更鲜艳 */
+  --listening-color: #22c55e;
+  --listening-glow: rgba(34, 197, 94, 0.6);
+  --thinking-color: #f59e0b;
+  --thinking-glow: rgba(245, 158, 11, 0.5);
+  --speaking-color: #3b82f6;
+  --speaking-glow: rgba(59, 130, 246, 0.5);
   
-  /* 一字眉灯光效果 */
+  /* 一字眉灯光效果 - 渐变流动 */
   --light-bar-gradient: linear-gradient(90deg, 
     transparent 0%, 
-    var(--jiyue-blue) 20%, 
-    var(--jiyue-blue) 80%, 
+    var(--siri-purple) 15%,
+    var(--siri-blue) 35%,
+    var(--siri-cyan) 50%,
+    var(--siri-blue) 65%,
+    var(--siri-purple) 85%,
     transparent 100%);
 }
 
@@ -47,68 +59,149 @@ html, body, #app {
   overflow: hidden;
 }
 
-/* 极越风格动画 */
+/* ============ 苹果 Siri 风格动画 ============ */
 
-/* 一字眉灯呼吸 */
+/* 一字眉灯呼吸 - 柔和脉动 */
 @keyframes light-bar-breathe {
   0%, 100% {
-    opacity: 0.4;
-    filter: blur(0px);
+    opacity: 0.6;
+    filter: blur(4px);
+    transform: scaleX(0.98);
   }
   50% {
     opacity: 1;
-    filter: blur(2px);
+    filter: blur(8px);
+    transform: scaleX(1);
   }
 }
 
-/* 核心球呼吸 */
+/* 灯条流动效果 - 左右渐变移动 */
+@keyframes light-bar-flow {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+/* 灯条彩虹流动 */
+@keyframes light-bar-rainbow {
+  0% {
+    filter: hue-rotate(0deg) blur(6px);
+  }
+  50% {
+    filter: hue-rotate(30deg) blur(8px);
+  }
+  100% {
+    filter: hue-rotate(0deg) blur(6px);
+  }
+}
+
+/* 核心光圈呼吸 - Siri 风格 */
 @keyframes core-breathe {
   0%, 100% {
     transform: scale(1);
     box-shadow: 
-      0 0 20px var(--jiyue-blue-glow),
-      0 0 40px var(--jiyue-blue-dim),
-      inset 0 0 20px rgba(0, 212, 255, 0.1);
-  }
-  50% {
-    transform: scale(1.02);
-    box-shadow: 
       0 0 30px var(--jiyue-blue-glow),
       0 0 60px var(--jiyue-blue-dim),
-      inset 0 0 30px rgba(0, 212, 255, 0.2);
+      0 0 100px rgba(0, 212, 255, 0.1),
+      inset 0 0 30px rgba(0, 212, 255, 0.05);
+  }
+  50% {
+    transform: scale(1.03);
+    box-shadow: 
+      0 0 40px var(--jiyue-blue-glow),
+      0 0 80px var(--jiyue-blue-dim),
+      0 0 120px rgba(0, 212, 255, 0.15),
+      inset 0 0 40px rgba(0, 212, 255, 0.1);
   }
 }
 
-/* 思考中脉冲 */
+/* 光圈旋转渐变 - iOS 18 Siri 风格 */
+@keyframes orb-rotate {
+  0% {
+    transform: rotate(0deg);
+    filter: hue-rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+    filter: hue-rotate(360deg);
+  }
+}
+
+/* 光晕脉动 */
+@keyframes glow-pulse {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.1);
+  }
+}
+
+/* 思考中脉冲 - 更流畅 */
 @keyframes thinking-pulse {
   0%, 100% {
-    opacity: 0.6;
+    opacity: 0.7;
     transform: scale(1);
+    filter: brightness(1);
   }
   50% {
     opacity: 1;
-    transform: scale(1.01);
+    transform: scale(1.02);
+    filter: brightness(1.2);
   }
 }
 
-/* 监听波纹 - 极越风格 */
+/* 思考旋转 */
+@keyframes thinking-rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* 监听波纹 - 更柔和 */
 @keyframes listening-ripple {
   0% {
     transform: scale(1);
-    opacity: 0.6;
-    border-color: var(--listening-color);
+    opacity: 0.8;
   }
   100% {
-    transform: scale(2);
+    transform: scale(2.5);
     opacity: 0;
-    border-color: var(--listening-color);
+  }
+}
+
+/* 说话时的波动 */
+@keyframes speaking-wave {
+  0%, 100% {
+    transform: scale(1) rotate(0deg);
+    border-radius: 50%;
+  }
+  25% {
+    transform: scale(1.02) rotate(2deg);
+    border-radius: 48% 52% 50% 50%;
+  }
+  50% {
+    transform: scale(1.04) rotate(0deg);
+    border-radius: 50% 50% 48% 52%;
+  }
+  75% {
+    transform: scale(1.02) rotate(-2deg);
+    border-radius: 52% 48% 50% 50%;
   }
 }
 
 /* Pixel 点阵闪烁 */
 @keyframes pixel-blink {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 1; }
+  0%, 100% { opacity: 0.2; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1); }
 }
 
 /* 文字淡入 */
@@ -135,12 +228,42 @@ html, body, #app {
   }
 }
 
-/* 扫光效果 */
+/* 扫光效果 - 更平滑 */
 @keyframes scan-line {
   0% {
     transform: translateX(-100%);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
   }
   100% {
-    transform: translateX(100%);
+    transform: translateX(400%);
+    opacity: 0;
+  }
+}
+
+/* 边缘光晕动画 - iOS 18 Siri 风格 */
+@keyframes edge-glow {
+  0%, 100% {
+    box-shadow: 
+      inset 0 0 20px rgba(168, 85, 247, 0.3),
+      inset 0 0 40px rgba(59, 130, 246, 0.2),
+      0 0 30px rgba(6, 182, 212, 0.3);
+  }
+  33% {
+    box-shadow: 
+      inset 0 0 25px rgba(59, 130, 246, 0.3),
+      inset 0 0 50px rgba(6, 182, 212, 0.2),
+      0 0 40px rgba(168, 85, 247, 0.3);
+  }
+  66% {
+    box-shadow: 
+      inset 0 0 20px rgba(6, 182, 212, 0.3),
+      inset 0 0 45px rgba(168, 85, 247, 0.2),
+      0 0 35px rgba(59, 130, 246, 0.3);
   }
 }
