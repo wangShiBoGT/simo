@@ -432,66 +432,16 @@ const handleRequest = async (req, res) => {
   }
   
   // Edge TTS 语音合成（免费微软神经语音，非常自然）
+  // 注意：edge-tts npm 包在某些环境下不兼容，这里返回提示使用浏览器原生语音
   if (url.pathname === '/api/tts/edge' && req.method === 'POST') {
-    try {
-      const { text, voice, rate, pitch } = await parseBody(req)
-      
-      if (!text) {
-        res.writeHead(400, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ error: '缺少 text 参数' }))
-        return
-      }
-      
-      console.log('🔊 Edge TTS 请求:', { text: text.substring(0, 50), voice })
-      
-      // 动态导入 edge-tts
-      let MsEdgeTTS
-      try {
-        const edgeTts = await import('edge-tts')
-        MsEdgeTTS = edgeTts.MsEdgeTTS
-      } catch (importError) {
-        console.error('Edge TTS 导入失败:', importError.message)
-        res.writeHead(500, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ 
-          error: 'Edge TTS 模块加载失败',
-          detail: importError.message,
-          hint: '请使用浏览器原生语音或配置百度语音'
-        }))
-        return
-      }
-      
-      const tts = new MsEdgeTTS()
-      // 默认使用晓晓（温暖亲切，最接近 SIMO 风格）
-      const voiceId = voice || 'zh-CN-XiaoxiaoNeural'
-      
-      try {
-        await tts.setMetadata(voiceId, 'audio-24khz-96kbitrate-mono-mp3')
-      } catch (metaError) {
-        console.error('Edge TTS setMetadata 失败:', metaError.message)
-        res.writeHead(500, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ error: 'TTS 初始化失败', detail: metaError.message }))
-        return
-      }
-      
-      // 生成语音
-      const audioBuffer = await tts.toArrayBuffer(text)
-      
-      console.log('🔊 Edge TTS 成功，音频大小:', audioBuffer.byteLength)
-      
-      res.writeHead(200, { 
-        'Content-Type': 'audio/mp3',
-        'Content-Length': audioBuffer.byteLength
-      })
-      res.end(Buffer.from(audioBuffer))
-      
-    } catch (error) {
-      console.error('Edge TTS 错误:', error.message, error.stack)
-      res.writeHead(500, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ 
-        error: error.message,
-        hint: '请使用浏览器原生语音或配置百度语音'
-      }))
-    }
+    // 由于 edge-tts 包在 Render 等云环境不兼容 TypeScript
+    // 暂时禁用服务端 Edge TTS，让前端使用浏览器原生语音
+    res.writeHead(503, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ 
+      error: 'Edge TTS 服务暂不可用',
+      hint: '请使用浏览器原生语音',
+      reason: '云环境不支持 edge-tts 包'
+    }))
     return
   }
   

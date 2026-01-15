@@ -388,47 +388,14 @@ export const speak = async (text) => {
   
   console.log('🔊 语音合成引擎:', engine)
   
-  // Edge TTS（微软神经语音，免费且非常自然，推荐）
+  // Edge TTS（云端部署时不可用，直接使用浏览器原生语音）
   if (engine === 'edge') {
-    try {
-      const response = await fetch(`${apiBase}/tts/edge`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text,
-          voice: voiceConfig.edgeVoice || 'zh-CN-XiaoxiaoNeural'  // 晓晓，温暖亲切
-        })
-      })
-      
-      if (response.ok) {
-        const audioBlob = await response.blob()
-        const audioUrl = URL.createObjectURL(audioBlob)
-        const audio = new Audio(audioUrl)
-        
-        return new Promise((resolve) => {
-          audio.onended = () => {
-            URL.revokeObjectURL(audioUrl)
-            resolve()
-          }
-          audio.onerror = () => {
-            console.warn('Edge TTS 播放失败，降级到浏览器原生')
-            URL.revokeObjectURL(audioUrl)
-            speakWithBrowser(text, voiceConfig).then(resolve)
-          }
-          audio.play().catch(() => {
-            speakWithBrowser(text, voiceConfig).then(resolve)
-          })
-        })
-      } else {
-        console.warn('Edge TTS 合成失败，尝试百度语音')
-      }
-    } catch (error) {
-      console.warn('Edge TTS 请求失败:', error.message)
-    }
+    console.log('🔊 使用浏览器原生语音（Edge TTS 云端不可用）')
+    return speakWithBrowser(text, voiceConfig)
   }
   
-  // 百度语音合成（备选）
-  if (engine === 'baidu' || engine === 'edge') {
+  // 百度语音合成（需要配置 API Key）
+  if (engine === 'baidu') {
     try {
       const response = await fetch(`${apiBase}/tts/baidu`, {
         method: 'POST',
