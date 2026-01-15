@@ -179,7 +179,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { simoChat, speak, stopSpeak } from './services/simo.js'
 import memory from './services/memory.js'
 import SettingsPanel from './components/SettingsPanel.vue'
@@ -194,6 +194,21 @@ const messages = ref([])
 const showSettings = ref(false)
 const currentMember = ref(null)
 const currentModel = ref('zhipu')  // 默认使用智谱（免费）
+const scrollContainer = ref(null)  // 滚动容器引用
+
+// 自动滚动到底部
+const scrollToBottom = () => {
+  nextTick(() => {
+    if (scrollContainer.value) {
+      scrollContainer.value.scrollTop = scrollContainer.value.scrollHeight
+    }
+  })
+}
+
+// 监听消息变化，自动滚动
+watch(messages, () => {
+  scrollToBottom()
+}, { deep: true })
 
 // 模型切换
 const onModelChange = () => {
