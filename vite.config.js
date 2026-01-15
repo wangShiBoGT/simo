@@ -5,9 +5,8 @@ export default defineConfig({
   plugins: [vue()],
   
   // GitHub Pages 部署时需要设置 base
-  // 如果部署到 https://用户名.github.io/simo/，设置 base: '/simo/'
-  // 如果部署到根目录或自己的服务器，设置 base: '/'
-  base: process.env.GITHUB_PAGES ? '/simo/' : '/',
+  // 部署到 https://wangshibogt.github.io/simo/
+  base: '/simo/',
   
   server: {
     port: 3000,
