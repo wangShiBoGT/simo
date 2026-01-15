@@ -290,7 +290,10 @@ const callLLMProxy = async (message, history) => {
   // 从 localStorage 获取当前选择的模型
   const currentModel = localStorage.getItem('simo_current_model') || 'zhipu'
   
-  const response = await fetch(`${API_BASE}/chat`, {
+  // 动态获取 API 地址（每次调用时读取最新配置）
+  const apiBase = getApiBase()
+  
+  const response = await fetch(`${apiBase}/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -380,12 +383,15 @@ export const speak = async (text) => {
   const voiceConfig = savedVoiceConfig ? JSON.parse(savedVoiceConfig) : {}
   const engine = voiceConfig.engine || 'edge'  // 默认 Edge TTS（微软神经语音，更自然）
   
+  // 动态获取 API 地址
+  const apiBase = getApiBase()
+  
   console.log('🔊 语音合成引擎:', engine)
   
   // Edge TTS（微软神经语音，免费且非常自然，推荐）
   if (engine === 'edge') {
     try {
-      const response = await fetch('/api/tts/edge', {
+      const response = await fetch(`${apiBase}/tts/edge`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -424,7 +430,7 @@ export const speak = async (text) => {
   // 百度语音合成（备选）
   if (engine === 'baidu' || engine === 'edge') {
     try {
-      const response = await fetch('/api/tts/baidu', {
+      const response = await fetch(`${apiBase}/tts/baidu`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
