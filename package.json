@@ -1,0 +1,30 @@
+{
+  "name": "simo",
+  "version": "1.0.0",
+  "description": "Simo - 家用 AI 机器人（人格先行的智能陪伴）",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "server": "node server/index.js",
+    "start": "concurrently \"npm run server\" \"npm run dev\"",
+    "test:api": "node -e \"fetch('http://localhost:3001/api/health').then(r=>r.json()).then(console.log)\"",
+    "test:tts": "node -e \"fetch('http://localhost:3001/api/tts/edge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:'你好，我是Simo'})}).then(r=>console.log(r.status))\""
+  },
+  "dependencies": {
+    "@vueuse/core": "^10.7.0",
+    "dayjs": "^1.11.10",
+    "dotenv": "^17.2.3",
+    "edge-tts": "^1.0.1",
+    "localforage": "^1.10.0",
+    "pinia": "^2.1.7",
+    "pinia-plugin-persistedstate": "^3.2.1",
+    "socket.io-client": "^4.7.2",
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "vite": "^5.0.0"
+  }
+}

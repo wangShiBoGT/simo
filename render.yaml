@@ -1,0 +1,12 @@
+# Render 部署配置
+# 在 render.com 创建 Web Service 时会自动识别
+
+services:
+  - type: web
+    name: simo-api
+    env: node
+    buildCommand: npm install
+    startCommand: node server/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
