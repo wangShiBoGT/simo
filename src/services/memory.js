@@ -156,10 +156,17 @@ export const saveConversation = (memberId, messages) => {
 /**
  * 获取最近的对话上下文
  * 用于发送给 AI 作为短期记忆
+ * 包含当前会话的消息 + 历史对话
  */
 export const getRecentContext = (memberId, maxMessages = 20) => {
+  // 获取历史对话
   const conversations = getConversations(memberId)
-  const allMessages = conversations.flatMap(c => c.messages)
+  const historicalMessages = conversations.flatMap(c => c.messages)
+  
+  // 合并当前会话消息（这是关键！）
+  const allMessages = [...historicalMessages, ...currentSessionMessages]
+  
+  // 返回最近的消息
   return allMessages.slice(-maxMessages)
 }
 
