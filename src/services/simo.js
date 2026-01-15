@@ -365,27 +365,69 @@ export const simoChat = async (message) => {
 
 /**
  * 语音合成（TTS）
- * 默认使用百度语音（极越 SIMO 同款），降级到浏览器原生
+ * 优先使用 Edge TTS（微软神经语音，免费、自然、支持情感）
  * 
  * @param {string} text - 要合成的文本
+ * @param {string} emotion - 情感风格（可选）
  */
-export const speak = async (text) => {
+export const speak = async (text, emotion = null) => {
   if (!text) return
   
   // 获取用户配置的 TTS 引擎
   const savedVoiceConfig = localStorage.getItem('simo_voice_config')
   const voiceConfig = savedVoiceConfig ? JSON.parse(savedVoiceConfig) : {}
-  const engine = voiceConfig.engine || 'edge'  // 默认 Edge TTS（微软神经语音，更自然）
+  const engine = voiceConfig.engine || 'edge'  // 默认 Edge TTS
   
   // 动态获取 API 地址
   const apiBase = getApiBase()
   
   console.log('🔊 语音合成引擎:', engine)
   
-  // Edge TTS（云端部署时不可用，直接使用浏览器原生语音）
+  // 根据文本内容自动推断情感（如果未指定）
+  const detectedEmotion = emotion || detectEmotion(text)
+  
+  // Edge TTS（微软神经语音，免费且自然）
   if (engine === 'edge') {
-    console.log('🔊 使用浏览器原生语音（Edge TTS 云端不可用）')
-    return speakWithBrowser(text, voiceConfig)
+    try {
+      console.log('🔊 使用 Edge TTS，情感:', detectedEmotion)
+      
+      const response = await fetch(`${apiBase}/tts/edge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          voice: voiceConfig.edgeVoice || 'zh-CN-XiaoxiaoNeural',  // 晓晓，最自然的中文女声
+          emotion: detectedEmotion,
+          rate: voiceConfig.edgeRate || '+0%',
+          pitch: voiceConfig.edgePitch || '+0Hz'
+        })
+      })
+      
+      if (response.ok) {
+        const audioBlob = await response.blob()
+        const audioUrl = URL.createObjectURL(audioBlob)
+        const audio = new Audio(audioUrl)
+        
+        return new Promise((resolve) => {
+          audio.onended = () => {
+            URL.revokeObjectURL(audioUrl)
+            resolve()
+          }
+          audio.onerror = () => {
+            console.warn('Edge TTS 播放失败，降级到浏览器原生')
+            URL.revokeObjectURL(audioUrl)
+            speakWithBrowser(text, voiceConfig).then(resolve)
+          }
+          audio.play().catch(() => {
+            speakWithBrowser(text, voiceConfig).then(resolve)
+          })
+        })
+      } else {
+        console.warn('Edge TTS 合成失败，降级到浏览器原生')
+      }
+    } catch (error) {
+      console.warn('Edge TTS 请求失败:', error.message)
+    }
   }
   
   // 百度语音合成（需要配置 API Key）
@@ -435,7 +477,44 @@ export const speak = async (text) => {
 }
 
 /**
- * 浏览器原生语音合成（降级方案）
+ * 根据文本内容自动检测情感
+ * 返回 Edge TTS 支持的情感标签
+ */
+const detectEmotion = (text) => {
+  // 情感关键词映射
+  const emotionPatterns = {
+    // 开心/欢快
+    cheerful: ['哈哈', '嘿嘿', '太棒了', '太好了', '开心', '高兴', '棒', '赞', '喜欢', '爱', '幸福', '快乐', '欢迎'],
+    // 友好/温和
+    friendly: ['在呢', '好的', '没问题', '帮你', '当然', '可以', '明白', '知道了', '记住了'],
+    // 抱歉/同情
+    empathetic: ['抱歉', '对不起', '辛苦', '累', '难过', '不容易', '理解', '明白你'],
+    // 平静/认真
+    calm: ['让我想想', '考虑一下', '我觉得', '建议', '可能', '也许'],
+    // 担忧/关心
+    gentle: ['注意', '小心', '别忘了', '记得', '保重', '安全'],
+    // 惊喜
+    cheerful: ['哇', '真的吗', '太棒了', '真不错'],
+    // 默认友好
+    default: 'friendly'
+  }
+  
+  // 遍历检测
+  for (const [emotion, keywords] of Object.entries(emotionPatterns)) {
+    if (emotion === 'default') continue
+    for (const keyword of keywords) {
+      if (text.includes(keyword)) {
+        return emotion
+      }
+    }
+  }
+  
+  // 默认返回友好语气
+  return 'friendly'
+}
+
+/**
+ * 浏览器原生语音合成（云端降级方案，已优化自然度）
  */
 const speakWithBrowser = async (text, config = {}) => {
   if (!('speechSynthesis' in window)) {
@@ -446,17 +525,53 @@ const speakWithBrowser = async (text, config = {}) => {
   // 停止之前的语音
   speechSynthesis.cancel()
   
+  // 等待语音列表加载（某些浏览器需要）
+  let voices = speechSynthesis.getVoices()
+  if (voices.length === 0) {
+    await new Promise(resolve => {
+      speechSynthesis.onvoiceschanged = () => {
+        voices = speechSynthesis.getVoices()
+        resolve()
+      }
+      // 超时保护
+      setTimeout(resolve, 500)
+    })
+  }
+  
   const utterance = new SpeechSynthesisUtterance(text)
   utterance.lang = 'zh-CN'
-  utterance.rate = config.rate || 0.95
-  utterance.pitch = config.pitch || 1.05
+  
+  // 优化语音参数，让声音更自然
+  utterance.rate = config.rate || 0.9      // 稍慢一点更自然
+  utterance.pitch = config.pitch || 1.0    // 正常音调
   utterance.volume = config.volume || 1.0
   
-  // 查找中文语音
-  const voices = speechSynthesis.getVoices()
-  const zhVoice = voices.find(v => v.lang.startsWith('zh'))
-  if (zhVoice) {
-    utterance.voice = zhVoice
+  // 优先选择更自然的中文语音（按优先级排序）
+  const preferredVoices = [
+    'Microsoft Xiaoxiao Online',      // Edge 晓晓（最自然）
+    'Microsoft Yunxi Online',         // Edge 云希
+    'Google 普通话（中国大陆）',     // Chrome 中文
+    'Tingting',                       // macOS 婷婷
+    'Sinji',                          // macOS 
+  ]
+  
+  let selectedVoice = null
+  
+  // 先尝试优先语音
+  for (const preferred of preferredVoices) {
+    selectedVoice = voices.find(v => v.name.includes(preferred))
+    if (selectedVoice) break
+  }
+  
+  // 如果没找到优先语音，选择任意中文语音
+  if (!selectedVoice) {
+    selectedVoice = voices.find(v => v.lang.startsWith('zh-CN')) ||
+                    voices.find(v => v.lang.startsWith('zh'))
+  }
+  
+  if (selectedVoice) {
+    utterance.voice = selectedVoice
+    console.log('🔊 使用浏览器语音:', selectedVoice.name)
   }
   
   return new Promise((resolve) => {

@@ -14,6 +14,7 @@ import 'dotenv/config'
 import http from 'http'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
+import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -432,16 +433,86 @@ const handleRequest = async (req, res) => {
   }
   
   // Edge TTS 语音合成（免费微软神经语音，非常自然）
-  // 注意：edge-tts npm 包在某些环境下不兼容，这里返回提示使用浏览器原生语音
   if (url.pathname === '/api/tts/edge' && req.method === 'POST') {
-    // 由于 edge-tts 包在 Render 等云环境不兼容 TypeScript
-    // 暂时禁用服务端 Edge TTS，让前端使用浏览器原生语音
-    res.writeHead(503, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ 
-      error: 'Edge TTS 服务暂不可用',
-      hint: '请使用浏览器原生语音',
-      reason: '云环境不支持 edge-tts 包'
-    }))
+    // 检测是否在 Render 云端运行（Render 不支持 msedge-tts 的 WebSocket 连接）
+    const isRenderCloud = process.env.RENDER === 'true' || process.env.RENDER_EXTERNAL_HOSTNAME
+    
+    if (isRenderCloud) {
+      // 云端环境：返回 503 让前端降级到浏览器原生语音
+      res.writeHead(503, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ 
+        error: 'Edge TTS 云端不可用',
+        hint: 'use_browser_tts',
+        reason: 'Render 云环境不支持 WebSocket 连接微软服务器'
+      }))
+      return
+    }
+    
+    try {
+      const { text, voice, rate, pitch, emotion } = await parseBody(req)
+      
+      if (!text) {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: '缺少 text 参数' }))
+        return
+      }
+      
+      // 微软神经语音配置
+      // 中文女声推荐：zh-CN-XiaoxiaoNeural（最自然，支持情感）
+      // 中文男声推荐：zh-CN-YunxiNeural
+      const selectedVoice = voice || 'zh-CN-XiaoxiaoNeural'
+      
+      const tts = new MsEdgeTTS()
+      await tts.setMetadata(selectedVoice, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3)
+      
+      // 构建 SSML 以支持情感和语调控制
+      // 情感标签：cheerful, sad, angry, fearful, friendly, hopeful 等
+      const emotionStyle = emotion || 'friendly'  // 默认友好语气
+      const speechRate = rate || '+0%'  // 语速调整
+      const speechPitch = pitch || '+0Hz'  // 音调调整
+      
+      // 使用 SSML 实现情感控制
+      const ssml = `
+        <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" 
+               xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="zh-CN">
+          <voice name="${selectedVoice}">
+            <mstts:express-as style="${emotionStyle}">
+              <prosody rate="${speechRate}" pitch="${speechPitch}">
+                ${text}
+              </prosody>
+            </mstts:express-as>
+          </voice>
+        </speak>
+      `
+      
+      // 生成音频流（msedge-tts 返回 {audioStream} 对象）
+      const audioChunks = []
+      const { audioStream } = tts.toStream(text)  // 直接使用文本，不用 SSML
+      
+      audioStream.on('data', (chunk) => {
+        audioChunks.push(chunk)
+      })
+      
+      audioStream.on('end', () => {
+        const audioBuffer = Buffer.concat(audioChunks)
+        res.writeHead(200, { 
+          'Content-Type': 'audio/mpeg',
+          'Content-Length': audioBuffer.length
+        })
+        res.end(audioBuffer)
+      })
+      
+      audioStream.on('error', (error) => {
+        console.error('Edge TTS 流错误:', error)
+        res.writeHead(500, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'Edge TTS 合成失败', detail: error.message }))
+      })
+      
+    } catch (error) {
+      console.error('Edge TTS 错误:', error)
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: error.message }))
+    }
     return
   }
   
