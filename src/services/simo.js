@@ -48,20 +48,15 @@ const API_CONFIG = {
 //   apiKey: ''
 // }
 
-// API 地址配置
-// 本地开发：/api（通过 Vite 代理到 localhost:3001）
-// GitHub Pages：需要在浏览器设置面板配置后端地址
+// API 地址配置（内置，开箱即用）
+const BUILTIN_API_BASE = 'https://simo-0s05.onrender.com/api'
 const getApiBase = () => {
-  // 优先使用用户在设置面板配置的地址
-  const savedConfig = localStorage.getItem('simo_api_config')
-  if (savedConfig) {
-    try {
-      const config = JSON.parse(savedConfig)
-      if (config.apiBase) return config.apiBase
-    } catch (e) {}
+  // 本地开发时使用代理
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return '/api'
   }
-  // 默认使用相对路径（本地开发）
-  return '/api'
+  // 生产环境使用内置地址
+  return BUILTIN_API_BASE
 }
 const API_BASE = getApiBase()
 const USE_LOCAL_PROXY = true
@@ -287,16 +282,10 @@ const callLLMDirect = async (messages) => {
  * 通过本地后端代理调用 API（推荐，API Key 安全）
  */
 const callLLMProxy = async (message, history) => {
-  // 从 localStorage 获取 API 配置
-  const savedConfig = localStorage.getItem('simo_api_config')
-  const apiConfig = savedConfig ? JSON.parse(savedConfig) : {}
-  const currentModel = apiConfig.provider || 'zhipu'
-  const apiKey = apiConfig.apiKey || ''
-  
-  // 动态获取 API 地址（每次调用时读取最新配置）
+  // 动态获取 API 地址
   const apiBase = getApiBase()
   
-  console.log('📋 API 配置:', { provider: currentModel, hasKey: !!apiKey })
+  console.log('� 调用后端 API...')
   
   const response = await fetch(`${apiBase}/chat`, {
     method: 'POST',
@@ -306,9 +295,8 @@ const callLLMProxy = async (message, history) => {
     body: JSON.stringify({ 
       message,
       history,
-      memberId: memory.getCurrentMember()?.id,
-      provider: currentModel,
-      apiKey: apiKey  // 传递 API Key 给后端
+      memberId: memory.getCurrentMember()?.id
+      // API Key 在后端环境变量中配置，无需前端传递
     })
   })
   
