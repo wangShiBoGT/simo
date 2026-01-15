@@ -285,7 +285,11 @@ const callLLMProxy = async (message, history) => {
   // 动态获取 API 地址
   const apiBase = getApiBase()
   
-  console.log('� 调用后端 API...')
+  console.log('📡 调用后端 API...')
+  
+  // 获取当前成员的记忆上下文（包含用户身份信息）
+  const currentMember = memory.getCurrentMember()
+  const memberContext = currentMember ? memory.buildMemoryContext(currentMember.id) : ''
   
   const response = await fetch(`${apiBase}/chat`, {
     method: 'POST',
@@ -295,8 +299,8 @@ const callLLMProxy = async (message, history) => {
     body: JSON.stringify({ 
       message,
       history,
-      memberId: memory.getCurrentMember()?.id
-      // API Key 在后端环境变量中配置，无需前端传递
+      memberId: currentMember?.id,
+      memberContext  // 传递记忆上下文给后端
     })
   })
   

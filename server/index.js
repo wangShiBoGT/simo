@@ -272,7 +272,7 @@ const handleRequest = async (req, res) => {
   // 对话接口
   if (url.pathname === '/api/chat' && req.method === 'POST') {
     try {
-      const { message, history, provider, apiKey } = await parseBody(req)
+      const { message, history, provider, apiKey, memberContext } = await parseBody(req)
       
       if (!message) {
         res.writeHead(400, { 'Content-Type': 'application/json' })
@@ -281,7 +281,8 @@ const handleRequest = async (req, res) => {
       }
       
       // 如果前端传了 API Key，使用前端的配置
-      const reply = await callLLM(message, history, '', provider, apiKey)
+      // memberContext 包含用户身份和长期记忆
+      const reply = await callLLM(message, history, memberContext || '', provider, apiKey)
       
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ reply }))
