@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Simo Logo - 简约圆环设计 -->
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00D4FF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0099CC;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- 外圆环 -->
+  <circle cx="16" cy="16" r="14" fill="none" stroke="url(#grad)" stroke-width="2.5"/>
+  <!-- 内部 S 形状 -->
+  <path d="M12 11c0-1.5 1.5-2.5 4-2.5s4 1 4 2.5c0 2-3 2.5-4 3.5s-4 1.5-4 3.5c0 1.5 1.5 2.5 4 2.5s4-1 4-2.5" 
+        fill="none" stroke="url(#grad)" stroke-width="2" stroke-linecap="round"/>
+</svg>
