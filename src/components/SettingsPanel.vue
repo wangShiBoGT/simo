@@ -311,7 +311,7 @@ const activeTab = ref('api')
 
 // API 配置
 const apiConfig = reactive({
-  provider: 'deepseek',
+  provider: 'zhipu',  // 默认智谱（免费）
   apiKey: '',
   apiBase: ''  // 后端地址（GitHub Pages 部署时需要）
 })
