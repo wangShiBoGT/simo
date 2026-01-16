@@ -1071,7 +1071,7 @@ onMounted(() => {
   transform: translateY(8px);
 }
 
-/* 对话面板 - Claude/ChatGPT 苹果风格 */
+/* 对话面板 - 现代化设计 */
 .conversation-panel {
   position: absolute;
   top: 80px;
@@ -1084,16 +1084,16 @@ onMounted(() => {
 .conversation-scroll {
   height: 100%;
   overflow-y: auto;
-  padding: 20px;
+  padding: 24px 16px;
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 8px;
   scroll-behavior: smooth;
 }
 
-/* 隐藏滚动条但保持功能 */
+/* 精致滚动条 */
 .conversation-scroll::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
 }
 
 .conversation-scroll::-webkit-scrollbar-track {
@@ -1101,82 +1101,106 @@ onMounted(() => {
 }
 
 .conversation-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
 }
 
 .conversation-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 /* 消息行 */
 .message-row {
-  padding: 24px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  animation: message-fade-in 0.3s ease-out;
+  padding: 16px 0;
+  animation: message-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.message-row:last-child {
-  border-bottom: none;
-}
-
-@keyframes message-fade-in {
+@keyframes message-slide-in {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(16px) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
 /* 消息容器 */
 .message-container {
-  max-width: 800px;
+  max-width: 720px;
   margin: 0 auto;
   display: flex;
-  gap: 16px;
-  padding: 0 20px;
+  gap: 14px;
+  padding: 0 16px;
 }
 
-/* 头像 */
+/* 头像 - 更精致 */
 .avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   flex-shrink: 0;
-  transition: transform 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.avatar:hover {
+  transform: scale(1.05);
 }
 
 .avatar.user {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #8b5cf6 0%, #a855f7 50%, #d946ef 100%);
   color: #fff;
 }
 
 .avatar.simo {
-  background: linear-gradient(135deg, #00d4ff 0%, #007aff 100%);
+  background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #8b5cf6 100%);
   color: #fff;
+  position: relative;
+}
+
+/* Simo 头像光晕 */
+.avatar.simo::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #06b6d4, #3b82f6, #8b5cf6);
+  z-index: -1;
+  opacity: 0.4;
+  filter: blur(6px);
+  animation: avatar-glow 3s ease-in-out infinite;
+}
+
+@keyframes avatar-glow {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.05); }
 }
 
 .simo-avatar {
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
   font-weight: 700;
+  font-size: 16px;
 }
 
 /* 消息内容 */
 .message-content {
   flex: 1;
   min-width: 0;
+  padding-top: 2px;
 }
 
 .message-header {
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .sender-name {
@@ -1186,22 +1210,48 @@ onMounted(() => {
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
 }
 
+/* 消息气泡 */
 .message-text {
   font-size: 15px;
-  line-height: 1.7;
+  line-height: 1.75;
   color: var(--text-secondary);
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
   word-wrap: break-word;
+  padding: 14px 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: all 0.2s ease;
 }
 
-/* Simo 消息特殊样式 */
+.message-text:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Simo 消息特殊样式 - 渐变边框 */
 .message-row.simo .message-text {
   color: var(--text-primary);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(59, 130, 246, 0.08), rgba(139, 92, 246, 0.08));
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  position: relative;
 }
 
-/* 用户消息背景 */
-.message-row.user {
-  background: rgba(255, 255, 255, 0.02);
+.message-row.simo .message-text::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 19px;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.3), rgba(59, 130, 246, 0.3), rgba(139, 92, 246, 0.3));
+  z-index: -1;
+  opacity: 0.5;
+}
+
+/* 用户消息样式 */
+.message-row.user .message-text {
+  background: rgba(139, 92, 246, 0.1);
+  border-color: rgba(139, 92, 246, 0.15);
 }
 
 /* 底部控制区 - ChatGPT 苹果风格 */
