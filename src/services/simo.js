@@ -48,15 +48,35 @@ const API_CONFIG = {
 //   apiKey: ''
 // }
 
-// API 地址配置（内置，开箱即用）
-const BUILTIN_API_BASE = 'https://simo-0s05.onrender.com/api'
+// API 地址配置
+// Cloudflare Worker（主要，更稳定）
+const WORKER_API_BASE = 'https://simo-api.wangshibo.workers.dev/api'
+// Render 备用
+const RENDER_API_BASE = 'https://simo-0s05.onrender.com/api'
+
+// 获取 API 地址
 const getApiBase = () => {
   // 本地开发时使用代理
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
     return '/api'
   }
-  // 生产环境使用内置地址
-  return BUILTIN_API_BASE
+  
+  // 检查用户是否配置了自定义 API 地址
+  const savedConfig = localStorage.getItem('simo_api_config')
+  if (savedConfig) {
+    try {
+      const config = JSON.parse(savedConfig)
+      if (config.apiBase) {
+        return config.apiBase
+      }
+    } catch (e) {
+      console.error('解析 API 配置失败:', e)
+    }
+  }
+  
+  // 默认使用 Cloudflare Worker（更稳定）
+  // 如果 Worker 未部署，可以改为 RENDER_API_BASE
+  return WORKER_API_BASE
 }
 const API_BASE = getApiBase()
 const USE_LOCAL_PROXY = true
