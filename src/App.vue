@@ -43,24 +43,27 @@
 
     <!-- 主交互区域 - 无对话时显示 -->
     <div class="main-area" v-if="messages.length === 0">
-      <!-- Simo 核心视觉 - 极简圆环 -->
+      <!-- Simo 核心视觉 - AI Orb 流动光球 -->
       <div class="simo-visual" @click="handleWakeUp">
         <div 
-          class="simo-ring" 
+          class="simo-orb" 
           :class="{ 
             'is-listening': isListening, 
             'is-thinking': isThinking,
             'is-speaking': isSpeaking 
           }"
         >
-          <!-- 内部光点 -->
-          <div class="ring-inner">
-            <div class="core-dot"></div>
-          </div>
+          <!-- 多层流动 blob -->
+          <div class="orb-layer orb-bg"></div>
+          <div class="orb-layer blob-a"></div>
+          <div class="orb-layer blob-b"></div>
+          <div class="orb-layer blob-c"></div>
+          <div class="orb-layer orb-highlight"></div>
+          
           <!-- 监听波纹 -->
-          <div v-if="isListening" class="ripple"></div>
-          <div v-if="isListening" class="ripple delay-1"></div>
-          <div v-if="isListening" class="ripple delay-2"></div>
+          <div v-if="isListening" class="orb-ripple"></div>
+          <div v-if="isListening" class="orb-ripple delay-1"></div>
+          <div v-if="isListening" class="orb-ripple delay-2"></div>
         </div>
         
         <!-- Simo 文字标识 -->
@@ -738,182 +741,262 @@ onMounted(() => {
   padding: 60px 20px;
 }
 
-/* Simo 核心视觉 - Siri 风格光圈 */
+/* Simo 核心视觉 - AI Orb 流动光球 */
 .simo-visual {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
+  gap: 32px;
   cursor: pointer;
   position: relative;
 }
 
-/* 外层光晕背景 */
-.simo-visual::before {
-  content: '';
-  position: absolute;
-  width: 280px;
-  height: 280px;
+/* AI Orb 容器 */
+.simo-orb {
+  width: 200px;
+  height: 200px;
   border-radius: 50%;
-  background: radial-gradient(circle,
-    rgba(0, 212, 255, 0.15) 0%,
-    rgba(168, 85, 247, 0.1) 30%,
-    rgba(59, 130, 246, 0.05) 50%,
-    transparent 70%);
-  animation: glow-pulse 4s ease-in-out infinite;
-  pointer-events: none;
-}
-
-.simo-ring {
-  width: 180px;
-  height: 180px;
-  border-radius: 50%;
-  border: 2.5px solid transparent;
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* 多彩渐变边框 */
-  background: 
-    linear-gradient(var(--bg-primary), var(--bg-primary)) padding-box,
-    linear-gradient(135deg, var(--siri-cyan), var(--siri-blue), var(--siri-purple), var(--siri-pink)) border-box;
-  animation: core-breathe 4s ease-in-out infinite;
+  overflow: hidden;
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   /* 多层光晕 */
   box-shadow: 
-    0 0 40px rgba(0, 212, 255, 0.3),
-    0 0 80px rgba(168, 85, 247, 0.2),
-    0 0 120px rgba(59, 130, 246, 0.1),
-    inset 0 0 40px rgba(0, 212, 255, 0.05);
+    0 0 60px rgba(168, 85, 247, 0.4),
+    0 0 100px rgba(59, 130, 246, 0.3),
+    0 0 140px rgba(6, 182, 212, 0.2),
+    inset 0 0 60px rgba(168, 85, 247, 0.2);
 }
 
-.simo-ring:hover {
+.simo-orb:hover {
   transform: scale(1.05);
   box-shadow: 
-    0 0 50px rgba(0, 212, 255, 0.4),
-    0 0 100px rgba(168, 85, 247, 0.3),
-    0 0 150px rgba(59, 130, 246, 0.15),
-    inset 0 0 50px rgba(0, 212, 255, 0.08);
+    0 0 80px rgba(168, 85, 247, 0.5),
+    0 0 120px rgba(59, 130, 246, 0.4),
+    0 0 160px rgba(6, 182, 212, 0.3),
+    inset 0 0 80px rgba(168, 85, 247, 0.3);
 }
 
-.ring-inner {
-  width: 85%;
-  height: 85%;
-  border-radius: 50%;
-  background: radial-gradient(circle, 
-    rgba(0, 212, 255, 0.1) 0%, 
-    rgba(168, 85, 247, 0.05) 40%,
-    transparent 70%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-}
-
-/* 内部旋转光环 */
-.ring-inner::before {
-  content: '';
+/* Orb 层级基础 */
+.orb-layer {
   position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  border: 1px solid rgba(0, 212, 255, 0.2);
-  animation: orb-rotate 20s linear infinite;
 }
 
-.core-dot {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--siri-cyan), var(--jiyue-blue));
+/* 背景层 - 深色渐变 */
+.orb-bg {
+  background: radial-gradient(circle at 30% 30%,
+    #1a1a2e 0%,
+    #0f0f1a 50%,
+    #050510 100%);
+}
+
+/* Blob A - 紫色流动 */
+.blob-a {
+  background: radial-gradient(ellipse at 30% 40%,
+    rgba(168, 85, 247, 0.8) 0%,
+    rgba(139, 92, 246, 0.4) 40%,
+    transparent 70%);
+  animation: blob-move-a 8s ease-in-out infinite;
+  filter: blur(20px);
+}
+
+/* Blob B - 蓝色流动 */
+.blob-b {
+  background: radial-gradient(ellipse at 70% 60%,
+    rgba(59, 130, 246, 0.8) 0%,
+    rgba(37, 99, 235, 0.4) 40%,
+    transparent 70%);
+  animation: blob-move-b 10s ease-in-out infinite;
+  filter: blur(25px);
+}
+
+/* Blob C - 青色流动 */
+.blob-c {
+  background: radial-gradient(ellipse at 50% 80%,
+    rgba(6, 182, 212, 0.7) 0%,
+    rgba(8, 145, 178, 0.3) 40%,
+    transparent 70%);
+  animation: blob-move-c 12s ease-in-out infinite;
+  filter: blur(22px);
+}
+
+/* 高光层 */
+.orb-highlight {
+  background: radial-gradient(circle at 35% 25%,
+    rgba(255, 255, 255, 0.3) 0%,
+    rgba(255, 255, 255, 0.1) 20%,
+    transparent 50%);
+  animation: highlight-pulse 4s ease-in-out infinite;
+}
+
+/* Blob 动画 */
+@keyframes blob-move-a {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(20%, 10%) scale(1.1);
+  }
+  50% {
+    transform: translate(10%, 25%) scale(0.9);
+  }
+  75% {
+    transform: translate(-15%, 15%) scale(1.05);
+  }
+}
+
+@keyframes blob-move-b {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(-25%, -10%) scale(1.15);
+  }
+  50% {
+    transform: translate(-10%, -20%) scale(0.85);
+  }
+  75% {
+    transform: translate(20%, -15%) scale(1.1);
+  }
+}
+
+@keyframes blob-move-c {
+  0%, 100% {
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+  33% {
+    transform: translate(15%, -25%) scale(1.2) rotate(10deg);
+  }
+  66% {
+    transform: translate(-20%, 10%) scale(0.8) rotate(-10deg);
+  }
+}
+
+@keyframes highlight-pulse {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+/* 监听状态 - 绿色主调 */
+.simo-orb.is-listening {
   box-shadow: 
-    0 0 20px var(--jiyue-blue-glow),
-    0 0 40px rgba(0, 212, 255, 0.4);
-  animation: glow-pulse 2s ease-in-out infinite;
+    0 0 80px rgba(34, 197, 94, 0.5),
+    0 0 120px rgba(34, 197, 94, 0.3),
+    0 0 160px rgba(16, 185, 129, 0.2),
+    inset 0 0 60px rgba(34, 197, 94, 0.3);
 }
 
-/* 监听状态 - 绿色光晕 */
-.simo-ring.is-listening {
-  background: 
-    linear-gradient(var(--bg-primary), var(--bg-primary)) padding-box,
-    linear-gradient(135deg, #22c55e, #4ade80, #86efac) border-box;
+.simo-orb.is-listening .blob-a {
+  background: radial-gradient(ellipse at 30% 40%,
+    rgba(34, 197, 94, 0.9) 0%,
+    rgba(22, 163, 74, 0.5) 40%,
+    transparent 70%);
+  animation-duration: 4s;
+}
+
+.simo-orb.is-listening .blob-b {
+  background: radial-gradient(ellipse at 70% 60%,
+    rgba(74, 222, 128, 0.8) 0%,
+    rgba(34, 197, 94, 0.4) 40%,
+    transparent 70%);
+  animation-duration: 5s;
+}
+
+.simo-orb.is-listening .blob-c {
+  background: radial-gradient(ellipse at 50% 80%,
+    rgba(16, 185, 129, 0.7) 0%,
+    rgba(5, 150, 105, 0.3) 40%,
+    transparent 70%);
+  animation-duration: 6s;
+}
+
+/* 思考状态 - 橙色主调 + 快速流动 */
+.simo-orb.is-thinking {
   box-shadow: 
-    0 0 50px var(--listening-glow),
-    0 0 100px rgba(34, 197, 94, 0.4),
-    0 0 150px rgba(34, 197, 94, 0.2),
-    inset 0 0 40px rgba(34, 197, 94, 0.1);
-}
-
-.simo-ring.is-listening .core-dot {
-  background: linear-gradient(135deg, #22c55e, #4ade80);
-  box-shadow: 
-    0 0 25px var(--listening-glow),
-    0 0 50px rgba(34, 197, 94, 0.5);
-}
-
-.simo-ring.is-listening .ring-inner {
-  background: radial-gradient(circle, rgba(34, 197, 94, 0.15) 0%, transparent 70%);
-}
-
-/* 思考状态 - 橙色脉动 */
-.simo-ring.is-thinking {
-  background: 
-    linear-gradient(var(--bg-primary), var(--bg-primary)) padding-box,
-    linear-gradient(135deg, #f59e0b, #fbbf24, #fcd34d) border-box;
+    0 0 80px rgba(245, 158, 11, 0.5),
+    0 0 120px rgba(251, 191, 36, 0.3),
+    0 0 160px rgba(245, 158, 11, 0.2),
+    inset 0 0 60px rgba(245, 158, 11, 0.3);
   animation: thinking-pulse 0.8s ease-in-out infinite;
+}
+
+.simo-orb.is-thinking .blob-a {
+  background: radial-gradient(ellipse at 30% 40%,
+    rgba(245, 158, 11, 0.9) 0%,
+    rgba(217, 119, 6, 0.5) 40%,
+    transparent 70%);
+  animation-duration: 2s;
+}
+
+.simo-orb.is-thinking .blob-b {
+  background: radial-gradient(ellipse at 70% 60%,
+    rgba(251, 191, 36, 0.8) 0%,
+    rgba(245, 158, 11, 0.4) 40%,
+    transparent 70%);
+  animation-duration: 2.5s;
+}
+
+.simo-orb.is-thinking .blob-c {
+  background: radial-gradient(ellipse at 50% 80%,
+    rgba(252, 211, 77, 0.7) 0%,
+    rgba(251, 191, 36, 0.3) 40%,
+    transparent 70%);
+  animation-duration: 3s;
+}
+
+/* 说话状态 - 蓝色主调 + 波动 */
+.simo-orb.is-speaking {
   box-shadow: 
-    0 0 50px var(--thinking-glow),
-    0 0 100px rgba(245, 158, 11, 0.4),
-    inset 0 0 40px rgba(245, 158, 11, 0.1);
-}
-
-.simo-ring.is-thinking .core-dot {
-  background: linear-gradient(135deg, #f59e0b, #fbbf24);
-  box-shadow: 
-    0 0 25px var(--thinking-glow),
-    0 0 50px rgba(245, 158, 11, 0.5);
-}
-
-.simo-ring.is-thinking .ring-inner::before {
-  animation: thinking-rotate 2s linear infinite;
-}
-
-/* 说话状态 - 蓝色波动 */
-.simo-ring.is-speaking {
-  background: 
-    linear-gradient(var(--bg-primary), var(--bg-primary)) padding-box,
-    linear-gradient(135deg, var(--siri-blue), var(--siri-cyan), var(--siri-blue)) border-box;
+    0 0 80px rgba(59, 130, 246, 0.5),
+    0 0 120px rgba(6, 182, 212, 0.3),
+    0 0 160px rgba(59, 130, 246, 0.2),
+    inset 0 0 60px rgba(59, 130, 246, 0.3);
   animation: speaking-wave 2s ease-in-out infinite;
-  box-shadow: 
-    0 0 50px var(--speaking-glow),
-    0 0 100px rgba(59, 130, 246, 0.4),
-    0 0 150px rgba(6, 182, 212, 0.2),
-    inset 0 0 40px rgba(59, 130, 246, 0.1);
 }
 
-.simo-ring.is-speaking .core-dot {
-  background: linear-gradient(135deg, var(--siri-blue), var(--siri-cyan));
-  box-shadow: 
-    0 0 25px var(--speaking-glow),
-    0 0 50px rgba(59, 130, 246, 0.5);
+.simo-orb.is-speaking .blob-a {
+  background: radial-gradient(ellipse at 30% 40%,
+    rgba(59, 130, 246, 0.9) 0%,
+    rgba(37, 99, 235, 0.5) 40%,
+    transparent 70%);
+  animation-duration: 3s;
 }
 
-/* 监听波纹 - 更柔和 */
-.ripple {
+.simo-orb.is-speaking .blob-b {
+  background: radial-gradient(ellipse at 70% 60%,
+    rgba(6, 182, 212, 0.8) 0%,
+    rgba(8, 145, 178, 0.4) 40%,
+    transparent 70%);
+  animation-duration: 4s;
+}
+
+/* 监听波纹 */
+.orb-ripple {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 180px;
-  height: 180px;
-  margin: -90px 0 0 -90px;
+  width: 200px;
+  height: 200px;
+  margin: -100px 0 0 -100px;
   border-radius: 50%;
-  border: 2px solid var(--listening-color);
+  border: 2px solid rgba(34, 197, 94, 0.6);
   animation: listening-ripple 2.5s ease-out infinite;
-  opacity: 0;
+  pointer-events: none;
 }
 
-.ripple.delay-1 { animation-delay: 0.5s; }
-.ripple.delay-2 { animation-delay: 1s; }
+.orb-ripple.delay-1 { animation-delay: 0.5s; }
+.orb-ripple.delay-2 { animation-delay: 1s; }
+
 
 /* Simo 文字标识 */
 .simo-label {
