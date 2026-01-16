@@ -50,7 +50,7 @@ const API_CONFIG = {
 
 // API 地址配置
 // Cloudflare Worker（主要，更稳定）
-const WORKER_API_BASE = 'https://simo-api.wangshibo.workers.dev/api'
+const WORKER_API_BASE = 'https://simo-api.simo-wangshibo.workers.dev/api'
 // Render 备用
 const RENDER_API_BASE = 'https://simo-0s05.onrender.com/api'
 
