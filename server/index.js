@@ -15,11 +15,67 @@ import http from 'http'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts'
+import * as serial from './serial.js'
+import hardwareConfig from './hardware.config.js'
+import { parseIntentLocal, IntentType, shouldExecute, getState, forceStop, RobotState } from './intent/index.js'
+import { ConfirmManager } from './confirm/index.js'
+import { SafetyManager } from './safety/index.js'
+import { parseToSuggestions, suggestionToIntent, SuggestionQueue } from './sequence/index.js'
+import { FluencyManager } from './fluency/index.js'
+import { parseNLU } from './nlu/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 const PORT = 3001
+
+// ============ C 阶段：建议队列 ============
+const suggestionQueue = new SuggestionQueue();
+
+// ============ L2.8 熟练层 ============
+const fluencyManager = new FluencyManager({
+  ttlMs: 5000  // 建议有效期 5 秒
+});
+
+// ============ B 阶段：安全管理器 ============
+const safetyManager = new SafetyManager({
+  stopNow: (signal) => {
+    console.log(`🛑 [Safety] 安全停止: ${signal}`);
+    const serialStatus = serial.getStatus();
+    if (serialStatus.connected) {
+      serial.sendRaw('S\r\n');
+    }
+    forceStop();
+    // C 阶段：安全阻止时清空建议队列
+    suggestionQueue.clear('safety_blocked');
+    // L2.8：安全阻止时清空熟练层建议
+    fluencyManager.clear('safety_blocked');
+  }
+});
+
+// ============ L2.6 确认层实例 ============
+const confirmManager = new ConfirmManager({
+  timeoutMs: 5000,
+  execute: async (intent) => {
+    // 检查安全状态
+    if (safetyManager.isBlocked()) {
+      console.log(`🚫 [Safety] 被安全阻止: ${safetyManager.getBlockReason()?.reason}`);
+      return;
+    }
+    
+    // 执行硬件命令
+    const serialStatus = serial.getStatus();
+    if (serialStatus.connected) {
+      if (intent.intent === 'STOP') {
+        serial.sendRaw('S\r\n');
+      } else {
+        const cmd = `${intent.direction},${intent.duration_ms}\r\n`;
+        serial.sendRaw(cmd);
+      }
+      console.log(`🤖 执行: ${intent.intent} ${intent.direction || ''} ${intent.duration_ms || ''}`);
+    }
+  }
+});
 
 // ============ 大模型 API 配置 ============
 // 在这里配置你的 API Key（或使用环境变量）
@@ -104,6 +160,19 @@ const SIMO_SYSTEM_PROMPT = `你叫 Simo。
 
 ### 能力边界
 做不到就说"这个我做不了"，不要绕弯子。
+
+### 运动控制能力（重要）
+你连接了一个可以移动的小车底盘。当用户让你移动时，在回复末尾加上动作标签：
+- 前进：[ACTION:forward]
+- 后退：[ACTION:backward]
+- 左转：[ACTION:left]
+- 右转：[ACTION:right]
+- 停止：[ACTION:stop]
+
+例如：
+- 用户说"往前走" → "好的，我往前走。[ACTION:forward]"
+- 用户说"停下来" → "好，停了。[ACTION:stop]"
+- 用户说"转个圈" → "好，我转一下。[ACTION:left]"
 
 ### 记忆使用规则（重要）
 - 标记为 [确定] 的记忆：直接说"我记得你..."
@@ -210,6 +279,42 @@ const callLLM = async (message, history = [], memberContext = '', frontendProvid
 }
 
 /**
+ * 解析并执行动作标签
+ * @param {string} reply - 大模型回复
+ * @returns {string} - 去掉动作标签后的回复
+ */
+const parseAndExecuteAction = async (reply) => {
+  const actionMatch = reply.match(/\[ACTION:(\w+)\]/i)
+  if (actionMatch) {
+    const action = actionMatch[1].toLowerCase()
+    console.log(`🎮 检测到动作: ${action}`)
+    
+    // 执行运动控制
+    const actionMap = {
+      'forward': { direction: 'forward', speed: 0.5 },
+      'backward': { direction: 'backward', speed: 0.5 },
+      'left': { direction: 'left', speed: 0.5 },
+      'right': { direction: 'right', speed: 0.5 },
+      'stop': null
+    }
+    
+    if (action === 'stop') {
+      serial.sendStop()
+      console.log('🛑 执行停止')
+    } else if (actionMap[action]) {
+      const { direction, speed } = actionMap[action]
+      const duration = 1000  // 默认1秒
+      serial.sendMove(direction, speed, duration)
+      console.log(`🚗 执行移动: ${direction}, 速度: ${Math.round(speed*100)}%, 时长: ${duration}ms`)
+    }
+    
+    // 返回去掉动作标签的回复
+    return reply.replace(/\[ACTION:\w+\]/gi, '').trim()
+  }
+  return reply
+}
+
+/**
  * 模拟响应（开发/降级用）
  */
 const getMockResponse = (message) => {
@@ -223,6 +328,26 @@ const getMockResponse = (message) => {
     return '在呢，有什么事？'
   }
   
+  // 运动控制（模拟响应也支持）
+  if (lowerMsg.includes('前进') || lowerMsg.includes('往前') || lowerMsg.includes('向前')) {
+    return '好的，我往前走。[ACTION:forward]'
+  }
+  if (lowerMsg.includes('后退') || lowerMsg.includes('往后') || lowerMsg.includes('退后')) {
+    return '好，我往后退。[ACTION:backward]'
+  }
+  if (lowerMsg.includes('左转') || lowerMsg.includes('往左') || lowerMsg.includes('向左')) {
+    return '好，我往左转。[ACTION:left]'
+  }
+  if (lowerMsg.includes('右转') || lowerMsg.includes('往右') || lowerMsg.includes('向右')) {
+    return '好，我往右转。[ACTION:right]'
+  }
+  if (lowerMsg.includes('停') || lowerMsg.includes('别动') || lowerMsg.includes('站住')) {
+    return '好，停了。[ACTION:stop]'
+  }
+  if (lowerMsg.includes('走') || lowerMsg.includes('动') || lowerMsg.includes('移动')) {
+    return '好的，我走一下。[ACTION:forward]'
+  }
+  
   if (lowerMsg.includes('天气')) {
     return '这个我现在还看不了，你可以看看窗外，或者我帮你查一下？'
   }
@@ -232,7 +357,7 @@ const getMockResponse = (message) => {
   }
   
   if (lowerMsg.includes('你能做什么') || lowerMsg.includes('你会什么')) {
-    return '陪你聊聊天，帮你想想事情，提醒你一些东西。慢慢来，不着急。'
+    return '陪你聊聊天，帮你想想事情，还能动一动。你可以让我往前走、后退、左转、右转。'
   }
   
   return '嗯，我听到了。'
@@ -282,7 +407,10 @@ const handleRequest = async (req, res) => {
       
       // 如果前端传了 API Key，使用前端的配置
       // memberContext 包含用户身份和长期记忆
-      const reply = await callLLM(message, history, memberContext || '', provider, apiKey)
+      let reply = await callLLM(message, history, memberContext || '', provider, apiKey)
+      
+      // 解析并执行动作标签（大模型→小车控制）
+      reply = await parseAndExecuteAction(reply)
       
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ reply }))
@@ -603,27 +731,55 @@ const handleRequest = async (req, res) => {
     return
   }
   
-  // 运动控制接口（L2/L3 预留）
+  // 运动控制接口（已接入串口）
   // 用途：底盘移动、机械臂、云台等
   if (url.pathname === '/api/hardware/motion' && req.method === 'POST') {
     try {
       const { action, data } = await parseBody(req)
       console.log('🦿 运动控制:', action, data)
       
-      // 预留动作：
-      // - move: 移动（方向、速度、距离）
-      // - rotate: 旋转
-      // - stop: 停止
-      // - goTo: 前往指定位置（需要地图）
-      // - follow: 跟随模式
-      // - getPosition: 获取当前位置
-      // - getBattery: 获取电池状态
+      const serialStatus = serial.getStatus()
+      let success = false
+      let message = ''
+      
+      // 根据 action 执行不同操作
+      switch (action) {
+        case 'move':
+          // data: { direction, distance, speed }
+          if (serialStatus.connected) {
+            // 将 distance(米) 转换为 duration(ms)，假设速度 0.3m/s
+            const speedMs = (data.speed || 0.3) * 1000  // m/s -> mm/s
+            const durationMs = Math.round((data.distance || 0.5) / (data.speed || 0.3) * 1000)
+            success = serial.sendMove(data.direction, data.speed || 0.5, durationMs)
+            message = success ? '移动命令已发送' : '串口发送失败'
+          } else {
+            message = '串口未连接，命令未执行'
+          }
+          break
+          
+        case 'stop':
+          if (serialStatus.connected) {
+            success = serial.sendStop()
+            message = success ? '停止命令已发送' : '串口发送失败'
+          } else {
+            message = '串口未连接'
+          }
+          break
+          
+        case 'follow':
+          message = '跟随模式暂不支持'
+          break
+          
+        default:
+          message = `未知动作: ${action}`
+      }
       
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ 
-        success: true, 
-        message: '运动控制接口已预留（L2/L3）',
+        success,
+        message,
         action,
+        serialConnected: serialStatus.connected,
         timestamp: new Date().toISOString()
       }))
     } catch (error) {
@@ -633,33 +789,348 @@ const handleRequest = async (req, res) => {
     return
   }
   
-  // 传感器接口（L2/L3 预留）
-  // 用途：温湿度、光线、距离、触摸等
+  // 传感器接口
+  // 用途：超声波距离、红外避障等
   if (url.pathname === '/api/hardware/sensors' && req.method === 'GET') {
     console.log('📡 传感器查询')
     
-    // 预留数据：
-    // - temperature: 温度
-    // - humidity: 湿度
-    // - light: 光线强度
-    // - distance: 距离（超声波/红外）
-    // - touch: 触摸状态
-    // - battery: 电池电量
+    const status = serial.getStatus()
+    
+    // 如果连接，先发送 SENSOR 命令刷新数据
+    if (status.connected) {
+      serial.send('SENSOR')
+      // 等待响应
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    
+    // 获取缓存的传感器数据
+    const sensorData = serial.getSensorData()
+    
+    // B 阶段：更新安全管理器并检查安全
+    const safetyResult = safetyManager.updateSensors({
+      ultrasonic: sensorData.ultrasonic?.distance,
+      infraredLeft: sensorData.infrared?.left,
+      infraredRight: sensorData.infrared?.right
+    })
     
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ 
       success: true,
-      message: '传感器接口已预留（L2/L3）',
+      message: status.connected ? '传感器数据已更新' : '串口未连接',
       sensors: {
-        temperature: null,
-        humidity: null,
-        light: null,
-        distance: null,
-        touch: null,
-        battery: null
+        ...sensorData,
+        connected: status.connected
       },
+      // B 阶段：安全状态
+      safety: safetyManager.getState(),
       timestamp: new Date().toISOString()
     }))
+    return
+  }
+  
+  // ============ A 阶段：可见性增强 ============
+  
+  // 状态汇总接口（只读，不改决策）
+  if (url.pathname === '/api/state' && req.method === 'GET') {
+    const currentState = getState()
+    const confirmState = confirmManager.getState()
+    const safetyState = safetyManager.getState()
+    
+    // 计算剩余时间（如果正在移动）
+    let remaining_ms = null
+    if (currentState.state === 'moving' && currentState.lastIntent?.duration_ms) {
+      const elapsed = Date.now() - currentState.stateChangeTime
+      remaining_ms = Math.max(0, currentState.lastIntent.duration_ms - elapsed)
+    }
+    
+    // C 阶段：建议队列状态
+    const queueState = suggestionQueue.getState()
+    // L2.8：熟练层状态
+    const fluencyState = fluencyManager.getState()
+    
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({
+      state: currentState.state,  // idle | moving | confirming
+      current_intent: currentState.lastIntent || null,
+      remaining_ms,
+      confirm_prompt: confirmState.awaiting ? confirmState.prompt : null,
+      last_reject: currentState.lastReject || null,
+      can_stop: true,  // 永远可打断
+      // B 阶段：安全状态
+      safety: {
+        state: safetyState.state,
+        blocked: safetyState.blocked,
+        reason: safetyState.reason,
+        source: safetyState.source
+      },
+      // C 阶段：建议队列
+      sequence: {
+        status: queueState.status,
+        total: queueState.total,
+        current: queueState.current,
+        remaining: queueState.remaining
+      },
+      // L2.8：熟练层建议
+      fluency: fluencyState,
+      timestamp: Date.now()
+    }))
+    return
+  }
+  
+  // ============ L2.5 意图层接口 ============
+  
+  // 意图解析接口（语音→意图→确认→硬件）
+  if (url.pathname === '/api/intent' && req.method === 'POST') {
+    try {
+      const { text } = await parseBody(req)
+      
+      if (!text) {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: '缺少 text 参数' }))
+        return
+      }
+      
+      console.log(`🎯 意图解析: "${text}"`)
+      
+      // 0. STOP 永远最高优先级
+      const maybeStopIntent = parseIntentLocal(text)
+      if (maybeStopIntent && maybeStopIntent.intent === 'STOP') {
+        console.log(`   → STOP 最高优先级`)
+        // 清空所有建议
+        suggestionQueue.clear('stop')
+        fluencyManager.clear('stop')
+        
+        if (confirmManager.isAwaiting()) {
+          const stopResult = await confirmManager.forceStop()
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({
+            mode: 'stop_preempt',
+            confirm: stopResult,
+            awaiting: false,
+            state: getState()
+          }))
+          return
+        }
+        
+        // 直接执行 STOP
+        const guardDecision = shouldExecute(maybeStopIntent)
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({
+          intent: maybeStopIntent,
+          decision: guardDecision,
+          confirm: { status: 'EXECUTED', command: 'S' },
+          state: getState()
+        }))
+        return
+      }
+      
+      // 1. 如果正在等待确认（确认层优先）
+      if (confirmManager.isAwaiting()) {
+        console.log(`   → 等待确认中，处理回复...`)
+        const confirmResult = await confirmManager.handleUserReply(text)
+        console.log(`   → 确认结果: ${confirmResult.status}`)
+        
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({
+          mode: 'confirm_reply',
+          confirm: confirmResult,
+          awaiting: confirmManager.isAwaiting(),
+          state: getState()
+        }))
+        return
+      }
+      
+      // 1.5 L2.8 熟练层：如果有建议，尝试处理"继续/不"
+      if (fluencyManager.hasSuggestion()) {
+        const fluencyResult = fluencyManager.handleReply(text)
+        console.log(`   → 熟练层回复: ${fluencyResult.status}`)
+        
+        if (fluencyResult.status === 'ACCEPTED') {
+          // 把建议当作新的 Intent，走正常链路
+          const intent = fluencyResult.intent
+          console.log(`   → 接受建议: ${intent.intent} ${intent.direction}`)
+          
+          // 检查安全
+          if (safetyManager.isBlocked()) {
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({
+              mode: 'fluency_blocked',
+              decision: { execute: false, reason: '安全阻止' },
+              state: getState()
+            }))
+            return
+          }
+          
+          // 走确认层
+          const robotState = getState().state
+          const confirmResult = await confirmManager.handleAllowedIntent(intent, robotState)
+          
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({
+            mode: 'fluency_accepted',
+            intent,
+            confirm: confirmResult,
+            awaiting: confirmManager.isAwaiting(),
+            state: getState()
+          }))
+          return
+        }
+        
+        if (fluencyResult.status === 'CANCELLED') {
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({
+            mode: 'fluency_cancelled',
+            state: getState()
+          }))
+          return
+        }
+        
+        // IGNORED：继续走正常解析
+      }
+      
+      // 2. NLU 双轨解析（规则优先，LLM 兜底）
+      const nluResult = await parseNLU(text, {
+        enableLLM: false  // 暂时禁用 LLM，后续可开启
+      })
+      
+      console.log(`   → NLU 来源: ${nluResult.source}`)
+      
+      // 处理序列建议
+      if (nluResult.suggestions && nluResult.suggestions.length > 0) {
+        console.log(`   → 解析成功: ${nluResult.suggestions.length} 个建议`)
+        
+        // 设置建议队列
+        suggestionQueue.setSuggestions(nluResult.suggestions, text)
+        
+        // 取出第一个建议
+        const firstSuggestion = suggestionQueue.peek()
+        const firstIntent = suggestionToIntent(firstSuggestion)
+        
+        // 检查安全状态
+        if (safetyManager.isBlocked()) {
+          suggestionQueue.clear('safety_blocked')
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({
+            intent: { intent: 'SEQUENCE', raw_text: text },
+            nlu: { source: nluResult.source, confidence: nluResult.confidence },
+            decision: { execute: false, reason: '安全阻止：' + safetyManager.getBlockReason()?.reason },
+            sequence: suggestionQueue.getState(),
+            state: getState()
+          }))
+          return
+        }
+        
+        // 返回建议序列
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({
+          intent: { intent: 'SEQUENCE', raw_text: text, confidence: nluResult.confidence },
+          nlu: { source: nluResult.source, confidence: nluResult.confidence },
+          firstIntent,
+          sequence: suggestionQueue.getState(),
+          decision: { execute: true, reason: `${nluResult.suggestions.length} 个建议待执行` },
+          isComplex: true,
+          awaiting: false,
+          state: getState()
+        }))
+        return
+      }
+      
+      // 处理单个意图
+      const intent = nluResult.intent
+      
+      if (!intent || nluResult.source === 'none') {
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({
+          intent: { intent: 'NONE', confidence: 0.3, raw_text: text },
+          nlu: { source: nluResult.source, confidence: nluResult.confidence },
+          decision: { execute: false, reason: '无法解析意图，请尝试：前进、后退、左转、右转、停' },
+          executed: false
+        }))
+        return
+      }
+      
+      console.log(`   → 意图: ${intent.intent} ${intent.direction || ''} ${intent.duration_ms || ''}`)
+      console.log(`   → 置信度: ${intent.confidence}`)
+      
+      // 3. 状态机守卫判断
+      const guardDecision = shouldExecute(intent)
+      console.log(`   → Guard: ${guardDecision.execute ? '通过' : '拒绝'} (${guardDecision.reason})`)
+      
+      if (!guardDecision.execute) {
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({
+          intent,
+          decision: guardDecision,
+          executed: false,
+          state: getState()
+        }))
+        return
+      }
+      
+      // 4. BEEP 特殊处理（测试用）
+      if (intent.intent === 'BEEP') {
+        const serialStatus = serial.getStatus()
+        if (serialStatus.connected) {
+          serial.sendRaw('BEEP\r\n')
+          console.log(`   → 蜂鸣器: BEEP`)
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({
+          intent,
+          confirm: { status: 'EXECUTED', command: 'BEEP' },
+          awaiting: false,
+          state: getState()
+        }))
+        return
+      }
+      
+      // 5. 确认层处理
+      const robotState = getState().state
+      const confirmResult = await confirmManager.handleAllowedIntent(intent, robotState)
+      console.log(`   → 确认层: ${confirmResult.status} ${confirmResult.prompt || confirmResult.command || ''}`)
+      
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({
+        intent,
+        decision: guardDecision,
+        confirm: confirmResult,
+        awaiting: confirmManager.isAwaiting(),
+        state: getState()
+      }))
+      
+    } catch (error) {
+      console.error('意图解析错误:', error)
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: error.message }))
+    }
+    return
+  }
+  
+  // 紧急停止接口
+  if (url.pathname === '/api/intent/stop' && req.method === 'POST') {
+    console.log('🛑 紧急停止')
+    const decision = forceStop()
+    
+    const serialStatus = serial.getStatus()
+    let executed = false
+    if (serialStatus.connected) {
+      serial.sendRaw('S\r\n')
+      executed = true
+    }
+    
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({
+      decision,
+      executed,
+      state: getState()
+    }))
+    return
+  }
+  
+  // 机器人状态查询
+  if (url.pathname === '/api/intent/state' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify(getState()))
     return
   }
   
@@ -691,7 +1162,17 @@ const handleRequest = async (req, res) => {
 // 启动服务器
 const server = http.createServer(handleRequest)
 
-server.listen(PORT, () => {
+// 初始化串口（如果配置启用）
+const initSerial = async () => {
+  if (hardwareConfig.communication?.serial?.enabled) {
+    await serial.init(hardwareConfig.communication.serial)
+  }
+}
+
+server.listen(PORT, async () => {
+  // 启动后初始化串口
+  await initSerial()
+  
   console.log(`
   ╔═══════════════════════════════════════════════╗
   ║                                               ║

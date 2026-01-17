@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run ESLint
+        run: npm run lint
+      
+      - name: Run invariant tests
+        run: node server/invariants/assert.intent.test.cjs
+      
+      - name: Run intent tests
+        run: node server/test-intent.cjs
+      
+      # 注意：confirm 测试需要服务器运行，在 CI 中跳过
+      # - name: Run confirm tests
+      #   run: node server/test-confirm.cjs

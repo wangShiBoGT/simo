@@ -1,6 +1,6 @@
 # 依赖
 node_modules/
-
+STM32单片机智能小车资料/
 # 构建产物
 dist/
 

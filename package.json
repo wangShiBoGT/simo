@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "server": "node server/index.js",
     "start": "node server/index.js",
+    "lint": "eslint server",
+    "test": "node server/invariants/assert.intent.test.cjs && node server/test-intent.cjs && node server/test-confirm.cjs",
     "test:api": "node -e \"fetch('http://localhost:3001/api/health').then(r=>r.json()).then(console.log)\"",
     "test:tts": "node -e \"fetch('http://localhost:3001/api/tts/edge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:'你好，我是Simo'})}).then(r=>console.log(r.status))\""
   },
@@ -20,11 +22,13 @@
     "msedge-tts": "^2.0.3",
     "pinia": "^2.1.7",
     "pinia-plugin-persistedstate": "^3.2.1",
+    "serialport": "^12.0.0",
     "socket.io-client": "^4.7.2",
     "vue": "^3.4.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
+    "eslint": "^9.39.2",
     "vite": "^5.0.0"
   }
 }

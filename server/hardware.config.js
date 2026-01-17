@@ -8,7 +8,7 @@
  * - L3: 智能交互（情感表达+主动行为+空间记忆）
  */
 
-module.exports = {
+export default {
   // 当前硬件等级
   level: 'L0',
   
@@ -136,11 +136,11 @@ module.exports = {
   
   // ============ 通信配置 ============
   communication: {
-    // 与硬件控制器通信
+    // 与硬件控制器通信（STM32 小车）
     serial: {
-      enabled: false,
-      port: null,  // 'COM3' | '/dev/ttyUSB0'
-      baudRate: 115200
+      enabled: true,  // 启用串口通信
+      port: 'COM5',   // USB转串口端口
+      baudRate: 115200  // Simo固件使用 115200
     },
     
     // GPIO（树莓派等）

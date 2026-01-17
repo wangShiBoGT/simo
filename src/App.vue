@@ -178,6 +178,18 @@
       @close="showSettings = false"
       @member-changed="onMemberChanged"
     />
+    
+    <!-- 运动控制面板 -->
+    <MotionPanel 
+      @command="onMotionCommand"
+      @speak="onMotionSpeak"
+    />
+    
+    <!-- 传感器面板 -->
+    <SensorPanel />
+    
+    <!-- A阶段：状态条 -->
+    <StatusBar />
   </div>
 </template>
 
@@ -185,7 +197,11 @@
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { simoChat, speak, stopSpeak } from './services/simo.js'
 import memory from './services/memory.js'
+import { sendIntent, emergencyStop, executeSequence, isMotionCommand, isStopCommand } from './services/motion.js'
 import SettingsPanel from './components/SettingsPanel.vue'
+import MotionPanel from './components/MotionPanel.vue'
+import SensorPanel from './components/SensorPanel.vue'
+import StatusBar from './components/StatusBar.vue'
 
 // 状态
 const isListening = ref(false)
@@ -259,6 +275,18 @@ const getQuickAck = (message) => {
 const onMemberChanged = (memberId) => {
   currentMember.value = memory.getMemberProfile(memberId)
   messages.value = [] // 清空当前对话显示
+}
+
+// 运动控制面板回调
+const onMotionCommand = ({ text, result }) => {
+  console.log('🎮 控制面板:', text, result)
+}
+
+const onMotionSpeak = async (text) => {
+  const voiceEnabled = localStorage.getItem('simo_voice_enabled') !== 'false'
+  if (voiceEnabled && text) {
+    await speak(text)
+  }
 }
 
 // 唤醒 Simo
@@ -387,6 +415,109 @@ const sendMessage = () => {
   chat(text)
 }
 
+// 🤖 L2.6 运动控制处理
+const handleMotionCommand = async (text) => {
+  const voiceEnabled = localStorage.getItem('simo_voice_enabled') !== 'false'
+  
+  // 停止指令立即执行
+  if (isStopCommand(text)) {
+    console.log('🛑 紧急停止')
+    await emergencyStop()
+    const response = '好的，已停止。'
+    messages.value.push({ role: 'simo', content: response })
+    if (voiceEnabled) await speak(response)
+    return
+  }
+  
+  isThinking.value = true
+  
+  try {
+    const result = await sendIntent(text)
+    console.log('🤖 意图结果:', result)
+    
+    isThinking.value = false
+    
+    let response = ''
+    
+    // 根据结果生成回复
+    if (result.error) {
+      response = '抱歉，控制系统暂时无法连接。'
+    } else if (result.sequence && result.sequence.length > 0) {
+      // 动作序列 - 逐个执行
+      response = `好的，执行 ${result.sequence.length} 个动作...`
+      messages.value.push({ role: 'simo', content: response })
+      if (voiceEnabled) await speak(response)
+      
+      // 执行序列
+      const seqResult = await executeSequence(result.sequence, (progress) => {
+        console.log(`🔄 执行动作 ${progress.current}/${progress.total}`)
+      })
+      
+      if (seqResult.completed) {
+        response = '动作序列执行完成！'
+      } else {
+        response = '动作序列执行中断。'
+      }
+    } else if (result.decision?.command === 'BEEP') {
+      // BEEP 蜂鸣器
+      response = '滴！'
+    } else if (result.awaiting) {
+      // 需要确认 - 用 TTS 播放确认提示
+      response = result.confirm?.prompt || '要执行吗？'
+      isSpeaking.value = true
+      currentResponse.value = response
+      // 立即播放确认提示
+      if (voiceEnabled) {
+        speak(response)
+      }
+    } else if (result.confirm?.status === 'EXECUTED') {
+      // 已执行
+      const cmd = result.confirm?.command || ''
+      if (cmd.startsWith('F')) response = '好的，向前走。'
+      else if (cmd.startsWith('B')) response = '好的，后退。'
+      else if (cmd.startsWith('L')) response = '好的，左转。'
+      else if (cmd.startsWith('R')) response = '好的，右转。'
+      else if (cmd === 'S') response = '好的，已停止。'
+      else if (cmd === 'BEEP') response = '滴！'
+      else response = '好的。'
+    } else if (result.confirm?.status === 'CONFIRMED') {
+      response = '好的，执行中。'
+    } else if (result.confirm?.status === 'CANCELLED') {
+      response = '好的，已取消。'
+    } else if (result.confirm?.status === 'EXPIRED') {
+      response = '超时了，已取消。'
+    } else if (result.confirm?.status === 'REJECTED') {
+      response = '请先回复确认。'
+    } else if (result.confirm?.status === 'FORCE_STOPPED') {
+      response = '好的，已停止。'
+    } else if (result.decision?.execute === false) {
+      response = result.decision?.reason || '无法执行该指令。'
+    } else {
+      response = '收到。'
+    }
+    
+    messages.value.push({ role: 'simo', content: response })
+    
+    // 播放语音反馈（确认提示已在上面播放，这里处理其他情况）
+    if (voiceEnabled && response && !result.awaiting) {
+      isSpeaking.value = true
+      currentResponse.value = response
+      await speak(response)
+      setTimeout(() => {
+        isSpeaking.value = false
+        currentResponse.value = ''
+      }, 1500)
+    }
+    
+  } catch (error) {
+    console.error('运动控制错误:', error)
+    isThinking.value = false
+    const response = '控制系统出错了。'
+    messages.value.push({ role: 'simo', content: response })
+    if (voiceEnabled) await speak(response)
+  }
+}
+
 // 核心对话函数
 const chat = async (userMessage) => {
   // 添加用户消息
@@ -394,6 +525,13 @@ const chat = async (userMessage) => {
     role: 'user',
     content: userMessage
   })
+  
+  // 🤖 L2.6 运动控制：检查是否是运动指令
+  if (isMotionCommand(userMessage)) {
+    console.log('🤖 检测到运动指令:', userMessage)
+    await handleMotionCommand(userMessage)
+    return
+  }
   
   isThinking.value = true
   
