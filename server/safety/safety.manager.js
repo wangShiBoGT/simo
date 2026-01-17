@@ -90,11 +90,12 @@ export class SafetyManager {
       }
     }
     
-    // 2. 红外检测（两侧都被阻挡时触发）
-    if (infraredLeft === SafetyThresholds.INFRARED_BLOCKED && 
-        infraredRight === SafetyThresholds.INFRARED_BLOCKED) {
-      return this._triggerSafety(SafetySignal.SIDE_BLOCKED, SensorSource.INFRARED);
-    }
+    // 2. 红外检测（暂时禁用，避免误触发）
+    // 原因：红外传感器容易误报，影响演示
+    // if (infraredLeft === SafetyThresholds.INFRARED_BLOCKED && 
+    //     infraredRight === SafetyThresholds.INFRARED_BLOCKED) {
+    //   return this._triggerSafety(SafetySignal.SIDE_BLOCKED, SensorSource.INFRARED);
+    // }
     
     // 3. 安全，清除阻挡状态
     if (this._blocked) {

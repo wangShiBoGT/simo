@@ -299,6 +299,7 @@ Sequence Parser（可拆多步）
 | 停止 | `S\n` | `OK,S\r\n` |
 | 蜂鸣 | `BEEP\n` | `OK,BEEP\r\n` |
 | 传感器 | `SENSOR\n` | `SENSOR,D155,L1R0\r\n` |
+| 舵机 | `SERVO,90\n` | `OK,SERVO,90\r\n` |
 
 ### 已知问题
 

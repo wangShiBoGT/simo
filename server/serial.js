@@ -257,6 +257,17 @@ export const sendPing = () => {
 }
 
 /**
+ * 发送舵机控制命令
+ * @param {number} angle - 角度 0-180
+ */
+export const sendServo = (angle) => {
+  if (angle < 0) angle = 0
+  if (angle > 180) angle = 180
+  console.log(`🔧 舵机命令: SERVO,${Math.round(angle)}`)
+  return send(`SERVO,${Math.round(angle)}`)
+}
+
+/**
  * 发送原始数据（用于意图层直接发送命令）
  * @param {string} data - 原始数据（含换行符）
  */
@@ -336,6 +347,7 @@ export default {
   sendMove,
   sendStop,
   sendPing,
+  sendServo,
   getStatus,
   getSensorData,
   close,

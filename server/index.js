@@ -23,6 +23,7 @@ import { SafetyManager } from './safety/index.js'
 import { parseToSuggestions, suggestionToIntent, SuggestionQueue } from './sequence/index.js'
 import { FluencyManager } from './fluency/index.js'
 import { parseNLU } from './nlu/index.js'
+import { startAutonomy, stopAutonomy, getAutonomyState, setAutonomyMode, triggerScan } from './autonomy/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -769,6 +770,17 @@ const handleRequest = async (req, res) => {
         case 'follow':
           message = '跟随模式暂不支持'
           break
+        
+        case 'servo':
+          // data: { angle } 舵机角度 0-180
+          if (serialStatus.connected) {
+            const angle = Math.max(0, Math.min(180, data.angle || 90))
+            success = serial.sendServo(angle)
+            message = success ? `舵机已转到 ${angle}°` : '串口发送失败'
+          } else {
+            message = '串口未连接'
+          }
+          break
           
         default:
           message = `未知动作: ${action}`
@@ -823,6 +835,55 @@ const handleRequest = async (req, res) => {
       },
       // B 阶段：安全状态
       safety: safetyManager.getState(),
+      timestamp: new Date().toISOString()
+    }))
+    return
+  }
+  
+  // ============ L3 自主避障接口 ============
+  
+  // 自主避障控制
+  if (url.pathname === '/api/autonomy' && req.method === 'POST') {
+    try {
+      const { action, mode } = await parseBody(req)
+      console.log('🤖 自主避障:', action, mode)
+      
+      let result = {}
+      switch (action) {
+        case 'start':
+          result = startAutonomy()
+          break
+        case 'stop':
+          result = stopAutonomy()
+          break
+        case 'setMode':
+          result = setAutonomyMode(mode)
+          break
+        case 'scan':
+          result = await triggerScan()
+          break
+        default:
+          result = { success: false, message: `未知动作: ${action}` }
+      }
+      
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({
+        ...result,
+        state: getAutonomyState(),
+        timestamp: new Date().toISOString()
+      }))
+    } catch (error) {
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: error.message }))
+    }
+    return
+  }
+  
+  // 自主避障状态
+  if (url.pathname === '/api/autonomy' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({
+      ...getAutonomyState(),
       timestamp: new Date().toISOString()
     }))
     return
