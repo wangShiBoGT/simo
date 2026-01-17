@@ -851,7 +851,7 @@ const handleRequest = async (req, res) => {
       let result = {}
       switch (action) {
         case 'start':
-          result = startAutonomy()
+          result = startAutonomy(mode || 'exploring')
           break
         case 'stop':
           result = stopAutonomy()

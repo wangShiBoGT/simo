@@ -44,11 +44,11 @@ const CONFIG = {
 /**
  * 启动自主避障模式
  */
-export function startAutonomy() {
+export function startAutonomy(mode = 'exploring') {
   if (autonomyEnabled) return { success: false, message: '自主模式已启动' };
   
   autonomyEnabled = true;
-  autonomyMode = 'scanning';
+  autonomyMode = mode;  // 默认探索模式
   
   console.log('🤖 [Autonomy] 自主避障模式启动');
   
@@ -93,7 +93,10 @@ async function autonomyLoop() {
   if (!autonomyEnabled) return;
   
   try {
-    // 1. 获取传感器数据
+    // 1. 主动查询传感器数据
+    serial.send('SENSOR');
+    await delay(100);  // 等待响应
+    
     const sensors = serial.getSensorData();
     const distance = sensors.ultrasonic?.distance;
     const irLeft = sensors.infrared?.left;
@@ -101,11 +104,11 @@ async function autonomyLoop() {
     
     console.log(`🤖 [Autonomy] 距离=${distance}cm, 红外L=${irLeft} R=${irRight}`);
     
-    // 2. 红外优先（近距离障碍）
-    if (irLeft === 0 || irRight === 0) {
-      await handleInfraredObstacle(irLeft, irRight);
-      return;
-    }
+    // 2. 红外优先（近距离障碍）- 暂时禁用，红外传感器误报
+    // if (irLeft === 0 || irRight === 0) {
+    //   await handleInfraredObstacle(irLeft, irRight);
+    //   return;
+    // }
     
     // 3. 超声波判断
     if (distance !== null && distance < CONFIG.DANGER_DISTANCE) {
