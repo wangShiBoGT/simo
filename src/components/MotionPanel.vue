@@ -219,10 +219,8 @@ const stopHold = () => {
 let statusTimer = null
 
 onMounted(() => {
-  // 初始检查
+  // 初始检查一次，不自动轮询（避免重复请求）
   checkStatus()
-  // 定时检查
-  statusTimer = setInterval(checkStatus, 3000)
 })
 
 onUnmounted(() => {

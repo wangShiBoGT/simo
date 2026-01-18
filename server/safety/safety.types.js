@@ -41,9 +41,9 @@ export const SensorSource = {
  * 安全阈值配置
  */
 export const SafetyThresholds = {
-  // 超声波距离阈值（单位：cm）- 演示时放宽
-  ULTRASONIC_DANGER: 5,     // 危险距离，立即停止（原15）
-  ULTRASONIC_WARNING: 15,   // 警告距离，显示警告（原30）
+  // 超声波距离阈值（单位：cm）- 演示时大幅放宽
+  ULTRASONIC_DANGER: 3,     // 危险距离，立即停止（原15→5→3）
+  ULTRASONIC_WARNING: 8,    // 警告距离，显示警告（原30→15→8）
   
   // 红外传感器（0=有障碍，1=无障碍）
   INFRARED_BLOCKED: 0

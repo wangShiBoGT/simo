@@ -237,7 +237,7 @@ const fetchSensors = async () => {
 // 切换自动刷新
 const toggleAutoRefresh = () => {
   if (autoRefresh.value) {
-    refreshTimer = setInterval(fetchSensors, 500)
+    refreshTimer = setInterval(fetchSensors, 2000)
   } else {
     if (refreshTimer) {
       clearInterval(refreshTimer)

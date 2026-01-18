@@ -804,12 +804,13 @@ const handleRequest = async (req, res) => {
   // 传感器接口
   // 用途：超声波距离、红外避障等
   if (url.pathname === '/api/hardware/sensors' && req.method === 'GET') {
-    console.log('📡 传感器查询')
-    
     const status = serial.getStatus()
     
-    // 如果连接，先发送 SENSOR 命令刷新数据
-    if (status.connected) {
+    // 节流：最少间隔 1000ms 发送一次 SENSOR 命令（降低频率避免卡顿）
+    const now = Date.now()
+    if (status.connected && (!global.lastSensorQuery || now - global.lastSensorQuery > 1000)) {
+      console.log('📡 传感器查询')
+      global.lastSensorQuery = now
       serial.send('SENSOR')
       // 等待响应
       await new Promise(resolve => setTimeout(resolve, 100))

@@ -66,7 +66,10 @@ const connect = async () => {
     port = new SerialPort({
       path: portPath,
       baudRate: config.baudRate,
-      autoOpen: false
+      autoOpen: false,
+      // 关键：打开时不触发 DTR/RTS，防止 STM32 复位
+      hupcl: false,
+      rtscts: false
     })
     
     // 使用行解析器（按 \n 分割）
@@ -74,7 +77,6 @@ const connect = async () => {
     
     // 监听数据
     parser.on('data', (data) => {
-      console.log('📥 STM32:', data.trim())
       handleResponse(data.trim())
     })
     
@@ -143,11 +145,18 @@ const scheduleReconnect = () => {
 /**
  * 处理 STM32 响应
  */
+// 传感器查询节流：最少间隔 500ms
+let lastSensorQueryTime = 0
+const SENSOR_QUERY_INTERVAL = 500
+
 function handleResponse(data) {
   const response = data.trim()
   if (!response) return
   
-  console.log('📥 STM32:', response)
+  // 只在非启动信息时打印日志
+  if (!response.includes('Ready')) {
+    console.log('📥 STM32:', response)
+  }
   
   const now = Date.now()
   

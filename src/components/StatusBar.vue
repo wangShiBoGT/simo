@@ -153,8 +153,8 @@ async function handleStop() {
 
 onMounted(() => {
   fetchState()
-  // 每 200ms 轮询状态
-  pollTimer = setInterval(fetchState, 200)
+  // 每 2000ms 轮询状态（降低频率避免卡顿）
+  pollTimer = setInterval(fetchState, 2000)
 })
 
 onUnmounted(() => {

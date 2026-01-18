@@ -181,7 +181,7 @@ async function startAutonomy() {
     await fetch(`${getApiBase()}/api/autonomy`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'start' })
+      body: JSON.stringify({ action: 'start', mode: 'exploring' })
     })
     await fetchState()
   } catch (error) {
@@ -239,11 +239,8 @@ async function setMode() {
 
 onMounted(() => {
   fetchState()
-  fetchSensors()
-  pollInterval = setInterval(() => {
-    fetchState()
-    fetchSensors()
-  }, 1000)
+  // 不自动轮询，避免与其他组件重复请求
+  // 用户操作时会手动刷新
 })
 
 onUnmounted(() => {

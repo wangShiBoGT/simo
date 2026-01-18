@@ -14,9 +14,10 @@
 
 import * as serial from '../serial.js';
 
-// 自主模式状态
+// 自主模式状态 - 默认关闭，需要用户手动启动
 let autonomyEnabled = false;
 let autonomyMode = 'idle';  // idle | scanning | avoiding | exploring
+let autonomyStartedByUser = false;  // 标记是否由用户主动启动
 let scanInterval = null;
 let lastScanResult = null;
 
@@ -125,8 +126,11 @@ async function autonomyLoop() {
     }
     
     // 4. 安全，继续前进
-    if (autonomyMode === 'exploring') {
+    if (autonomyMode === 'exploring' && distance !== null && distance > CONFIG.SAFE_DISTANCE) {
       serial.send(`F,${CONFIG.MOVE_DURATION}`);
+    } else if (autonomyMode === 'exploring' && (distance === null || distance > CONFIG.CAUTION_DISTANCE)) {
+      // 距离未知或在警戒范围外，谨慎前进
+      serial.send(`F,${Math.floor(CONFIG.MOVE_DURATION / 2)}`);
     }
     
   } catch (error) {
@@ -227,12 +231,15 @@ async function makeDecision(scan) {
   
   // 转向最佳方向
   if (best.dir === 'left') {
+    console.log('🤖 [Autonomy] 执行左转');
     serial.send(`L,${CONFIG.TURN_DURATION}`);
   } else if (best.dir === 'right') {
+    console.log('🤖 [Autonomy] 执行右转');
     serial.send(`R,${CONFIG.TURN_DURATION}`);
   } else {
     // 正前方最好，前进
-    if (autonomyMode === 'exploring') {
+    if (autonomyMode === 'exploring' && best.dist > CONFIG.CAUTION_DISTANCE) {
+      console.log('🤖 [Autonomy] 前方安全，前进');
       serial.send(`F,${CONFIG.MOVE_DURATION}`);
     }
   }
