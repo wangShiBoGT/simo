@@ -1246,12 +1246,41 @@ const handleRequest = async (req, res) => {
     const latestVersion = hardwareConfig.esp32?.latestVersion || '2.4.0'
     const updateAvailable = deviceVersion !== latestVersion
     
+    console.log(`[OTA] 检查更新: 设备版本=${deviceVersion}, 最新版本=${latestVersion}, 需更新=${updateAvailable}`)
+    
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({
       update: updateAvailable,
       version: latestVersion,
       url: updateAvailable ? `http://${req.headers.host}/api/ota/firmware` : null
     }))
+    return
+  }
+  
+  // ESP32 OTA固件下载接口
+  if (url.pathname === '/api/ota/firmware' && req.method === 'GET') {
+    const fs = await import('fs')
+    const path = await import('path')
+    const firmwarePath = path.join(__dirname, '..', 'esp32', '.pio', 'build', 'esp32-s3-devkitc-1', 'firmware.bin')
+    
+    console.log(`[OTA] 固件下载请求: ${firmwarePath}`)
+    
+    try {
+      const stat = fs.statSync(firmwarePath)
+      res.writeHead(200, {
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': stat.size,
+        'Content-Disposition': 'attachment; filename=firmware.bin'
+      })
+      
+      const readStream = fs.createReadStream(firmwarePath)
+      readStream.pipe(res)
+      console.log(`[OTA] 开始传输固件: ${stat.size} bytes`)
+    } catch (e) {
+      console.log(`[OTA] 固件文件不存在: ${e.message}`)
+      res.writeHead(404, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'Firmware not found', path: firmwarePath }))
+    }
     return
   }
   

@@ -30,11 +30,13 @@
 // 注意：ESP32只支持2.4GHz WiFi，不支持5GHz
 #define STA_SSID "ZTMAP"           // 家庭 WiFi 名称（2.4GHz）
 #define STA_PASSWORD "ztmap@416"   // 家庭 WiFi 密码
-#define SIMO_BACKEND ""    // Simo后端地址，如 http://192.168.1.100:3001
+// Simo后端配置（Node.js服务器）
+// 注意：ESP32启动后会尝试连接此后端检查OTA更新
+#define SIMO_BACKEND_IP "192.168.0.107"  // Node后端IP（电脑局域网IP）
+#define SIMO_BACKEND_PORT 3001
 
-// OTA服务器配置（服务器推送模式）
-#define OTA_SERVER_URL ""  // OTA服务器地址，如 http://your-server.com/api/ota
-#define OTA_CHECK_INTERVAL 3600000  // OTA检查间隔（毫秒），默认1小时
+// OTA服务器配置（指向Node后端）
+#define OTA_CHECK_INTERVAL 300000  // OTA检查间隔（毫秒），5分钟
 
 // STM32 串口（GPIO43=TX, GPIO44=RX）
 #define STM32_TX 43
@@ -910,16 +912,22 @@ bool tryConnectSavedWiFi() {
     return false;
 }
 
-// ============ OTA服务器推送 ============
-// 检查OTA更新（服务器推送模式）
+// ============ OTA服务器拉取 ============
+// 检查OTA更新（从Node后端拉取）
 void checkOTAUpdate() {
-    String otaServer = OTA_SERVER_URL;
-    if (otaServer.length() == 0 || !staConnected) return;
+    if (!staConnected) {
+        Serial.println("[OTA] 未连接WiFi，跳过检查");
+        return;
+    }
     
-    Serial.println("[OTA] 检查更新...");
+    Serial.println("[OTA] 检查Node后端更新...");
     
     HTTPClient http;
-    String url = otaServer + "?device=simo&version=" + FIRMWARE_VERSION;
+    // 构建Node后端OTA检查URL
+    char url[128];
+    snprintf(url, sizeof(url), "http://%s:%d/api/ota/check?version=%s", 
+        SIMO_BACKEND_IP, SIMO_BACKEND_PORT, FIRMWARE_VERSION);
+    Serial.printf("[OTA] 请求: %s\n", url);
     http.begin(url);
     
     int httpCode = http.GET();
