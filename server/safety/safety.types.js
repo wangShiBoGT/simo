@@ -5,7 +5,11 @@
  * - 传感器只产生 SafetySignal，不产生 Intent
  * - SafetySignal 只能触发 STOP，不能触发 MOVE/TURN
  * - 传感器是"下位裁决"：可以否定"能不能动"，不能否定"想不想动"
+ * 
+ * 单一事实来源：docs/protocol-spec.md
  */
+
+import hardwareConfig from '../hardware.config.js'
 
 /**
  * 安全信号类型（不是命令，只是信号）
@@ -39,11 +43,16 @@ export const SensorSource = {
 
 /**
  * 安全阈值配置
+ * 注意：实际值从 hardware.config.js 读取，这里只是默认值
+ * 单一事实来源：docs/protocol-spec.md
  */
+const configThresholds = hardwareConfig.safety?.obstacleThresholds || {}
+
 export const SafetyThresholds = {
-  // 超声波距离阈值（单位：cm）- 演示时大幅放宽
-  ULTRASONIC_DANGER: 3,     // 危险距离，立即停止（原15→5→3）
-  ULTRASONIC_WARNING: 8,    // 警告距离，显示警告（原30→15→8）
+  // 超声波距离阈值（单位：cm）- 从配置读取
+  ULTRASONIC_DANGER: configThresholds.danger || 8,    // 危险距离，立即停止
+  ULTRASONIC_WARNING: configThresholds.caution || 15, // 警告距离，显示警告
+  ULTRASONIC_SAFE: configThresholds.safe || 30,       // 安全距离
   
   // 红外传感器（0=有障碍，1=无障碍）
   INFRARED_BLOCKED: 0
