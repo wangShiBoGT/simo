@@ -1245,6 +1245,24 @@ const handleRequest = async (req, res) => {
           return
         }
         
+        // 鉴权检查（如果启用）
+        const authConfig = hardwareConfig.auth || {}
+        if (authConfig.enabled) {
+          const { pairingCode, allowedMACs } = authConfig
+          const deviceCode = device.pairingCode
+          
+          // 检查MAC白名单
+          if (allowedMACs?.length > 0 && !allowedMACs.includes(mac)) {
+            // 首次注册需要配对码
+            if (deviceCode !== pairingCode) {
+              console.log(`[ESP32] 鉴权失败: MAC=${mac}, 配对码错误`)
+              res.writeHead(403, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ error: 'Invalid pairing code', requirePairing: true }))
+              return
+            }
+          }
+        }
+        
         // 注册/更新设备信息
         global.esp32Devices.set(mac, {
           mac,
@@ -1307,11 +1325,25 @@ const handleRequest = async (req, res) => {
     
     console.log(`[OTA] 检查更新: 设备版本=${deviceVersion}, 最新版本=${latestVersion}, 需更新=${updateAvailable}`)
     
+    // 计算固件hash（用于校验）
+    let firmwareHash = null
+    try {
+      const fs = await import('fs')
+      const crypto = await import('crypto')
+      const path = await import('path')
+      const firmwarePath = path.join(__dirname, '..', 'esp32', '.pio', 'build', 'esp32-s3-devkitc-1', 'firmware.bin')
+      const firmwareData = fs.readFileSync(firmwarePath)
+      firmwareHash = 'sha256:' + crypto.createHash('sha256').update(firmwareData).digest('hex').substring(0, 16)
+    } catch (e) {
+      // 忽略hash计算失败
+    }
+    
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({
       update: updateAvailable,
       version: latestVersion,
-      url: updateAvailable ? `http://${req.headers.host}/api/ota/firmware` : null
+      url: updateAvailable ? `http://${req.headers.host}/api/ota/firmware` : null,
+      hash: firmwareHash
     }))
     return
   }
@@ -1320,16 +1352,22 @@ const handleRequest = async (req, res) => {
   if (url.pathname === '/api/ota/firmware' && req.method === 'GET') {
     const fs = await import('fs')
     const path = await import('path')
+    const crypto = await import('crypto')
     const firmwarePath = path.join(__dirname, '..', 'esp32', '.pio', 'build', 'esp32-s3-devkitc-1', 'firmware.bin')
     
     console.log(`[OTA] 固件下载请求: ${firmwarePath}`)
     
     try {
       const stat = fs.statSync(firmwarePath)
+      const firmwareData = fs.readFileSync(firmwarePath)
+      const firmwareHash = crypto.createHash('sha256').update(firmwareData).digest('hex')
+      
       res.writeHead(200, {
         'Content-Type': 'application/octet-stream',
         'Content-Length': stat.size,
-        'Content-Disposition': 'attachment; filename=firmware.bin'
+        'Content-Disposition': 'attachment; filename=firmware.bin',
+        'X-Firmware-Hash': 'sha256:' + firmwareHash.substring(0, 16),
+        'X-Firmware-Hash-Full': 'sha256:' + firmwareHash
       })
       
       const readStream = fs.createReadStream(firmwarePath)

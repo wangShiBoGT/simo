@@ -224,5 +224,15 @@ export default {
     // 生产环境（部署后配置）
     domain: '',  // 如 'simo.your-domain.com'
     useHttps: false
+  },
+  
+  // ============ 设备鉴权配置 ============
+  auth: {
+    // 设备配对码（ESP32首次注册时需要提供）
+    pairingCode: 'simo2026',
+    // 是否启用鉴权（开发环境可关闭）
+    enabled: false,
+    // 已授权的MAC地址列表（空表示允许所有）
+    allowedMACs: []
   }
 }
