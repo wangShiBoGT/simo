@@ -210,7 +210,7 @@ export default {
   esp32: {
     ip: '192.168.0.109',      // ESP32局域网IP
     apIP: '192.168.4.1',      // ESP32热点IP
-    latestVersion: '2.4.0',   // 最新固件版本
+    latestVersion: '2.4.1',   // 最新固件版本
     firmwarePath: './esp32/.pio/build/esp32-s3-devkitc-1/firmware.bin'
   }
 }

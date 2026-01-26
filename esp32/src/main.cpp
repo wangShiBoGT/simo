@@ -49,7 +49,7 @@
 #define MOTION_PROTOCOL "simple"
 
 // 版本信息
-#define FIRMWARE_VERSION "2.4.0"
+#define FIRMWARE_VERSION "2.4.1"
 #define BUILD_DATE __DATE__
 
 // ============ 全局变量 ============
