@@ -1224,8 +1224,67 @@ const handleRequest = async (req, res) => {
     return
   }
   
-  // ============ ESP32 OTA推送API ============
-  // 获取ESP32当前版本信息
+  // ============ ESP32设备管理 ============
+  // 在线设备列表（内存存储，生产环境应使用Redis/数据库）
+  if (!global.esp32Devices) {
+    global.esp32Devices = new Map()
+  }
+  
+  // ESP32设备注册/心跳接口
+  if (url.pathname === '/api/esp32/register' && req.method === 'POST') {
+    let body = ''
+    req.on('data', chunk => body += chunk)
+    req.on('end', () => {
+      try {
+        const device = JSON.parse(body)
+        const { mac, ip, version, uptime } = device
+        
+        if (!mac) {
+          res.writeHead(400, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'MAC address required' }))
+          return
+        }
+        
+        // 注册/更新设备信息
+        global.esp32Devices.set(mac, {
+          mac,
+          ip,
+          version,
+          uptime,
+          lastSeen: Date.now(),
+          registeredAt: global.esp32Devices.get(mac)?.registeredAt || Date.now()
+        })
+        
+        console.log(`[ESP32] 设备注册: MAC=${mac}, IP=${ip}, Version=${version}`)
+        
+        // 返回服务器时间和OTA信息
+        const latestVersion = hardwareConfig.esp32?.latestVersion || '2.4.1'
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({
+          success: true,
+          serverTime: Date.now(),
+          latestVersion,
+          updateAvailable: version !== latestVersion
+        }))
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: e.message }))
+      }
+    })
+    return
+  }
+  
+  // 获取所有在线ESP32设备
+  if (url.pathname === '/api/esp32/devices' && req.method === 'GET') {
+    const devices = Array.from(global.esp32Devices.values())
+      .filter(d => Date.now() - d.lastSeen < 120000) // 2分钟内活跃
+    
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ success: true, devices, count: devices.length }))
+    return
+  }
+  
+  // 获取ESP32当前版本信息（通过设备列表或直接请求）
   if (url.pathname === '/api/esp32/info' && req.method === 'GET') {
     try {
       const esp32IP = hardwareConfig.esp32?.ip || '192.168.0.109'

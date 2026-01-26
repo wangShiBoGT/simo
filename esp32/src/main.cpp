@@ -97,6 +97,7 @@ void runAutonomousLogic();
 void startProvisioningMode();
 void loadWiFiCredentials();
 void saveWiFiCredentials(const String& ssid, const String& password);
+void registerToBackend();
 void checkOTAUpdate();
 void performOTAUpdate(const String& url);
 
@@ -912,6 +913,42 @@ bool tryConnectSavedWiFi() {
     return false;
 }
 
+// ============ 设备注册 ============
+// 向Node后端注册设备
+void registerToBackend() {
+    if (!staConnected) return;
+    
+    Serial.println("[REG] 向Node后端注册...");
+    
+    HTTPClient http;
+    char url[128];
+    snprintf(url, sizeof(url), "http://%s:%d/api/esp32/register", 
+        SIMO_BACKEND_IP, SIMO_BACKEND_PORT);
+    
+    http.begin(url);
+    http.addHeader("Content-Type", "application/json");
+    
+    // 构建注册信息
+    char payload[256];
+    snprintf(payload, sizeof(payload), 
+        "{\"mac\":\"%s\",\"ip\":\"%s\",\"version\":\"%s\",\"uptime\":%lu}",
+        WiFi.macAddress().c_str(),
+        homeIP.c_str(),
+        FIRMWARE_VERSION,
+        millis() / 1000
+    );
+    
+    int httpCode = http.POST(payload);
+    if (httpCode == HTTP_CODE_OK) {
+        String response = http.getString();
+        Serial.printf("[REG] 注册成功: %s\n", response.c_str());
+    } else {
+        Serial.printf("[REG] 注册失败: %d\n", httpCode);
+    }
+    
+    http.end();
+}
+
 // ============ OTA服务器拉取 ============
 // 检查OTA更新（从Node后端拉取）
 void checkOTAUpdate() {
@@ -1116,8 +1153,9 @@ void setup() {
     
     server.begin();
     
-    // 启动时检查OTA更新
+    // 启动时向Node后端注册并检查OTA更新
     if (staConnected) {
+        registerToBackend();
         checkOTAUpdate();
     }
     
@@ -1215,6 +1253,13 @@ void loop() {
         } else if (line.indexOf("PONG") >= 0) {
             stm32Connected = true;
         }
+    }
+    
+    // 定期向Node后端注册心跳（每60秒）
+    static unsigned long lastRegister = 0;
+    if (staConnected && millis() - lastRegister >= 60000) {
+        lastRegister = millis();
+        registerToBackend();
     }
     
     // 自主导航逻辑
