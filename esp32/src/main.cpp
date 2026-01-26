@@ -41,6 +41,11 @@
 #define STM32_RX 44
 #define STM32_BAUD 115200
 
+// 运动协议配置（选择与STM32固件匹配的协议）
+// "simple" = simo_robot_simple固件: F,<ms> / B,<ms> / L,<ms> / R,<ms> / S
+// "m-v1"   = simo_robot固件: M,forward,speed,duration / S
+#define MOTION_PROTOCOL "simple"
+
 // 版本信息
 #define FIRMWARE_VERSION "2.4.0"
 #define BUILD_DATE __DATE__
@@ -443,27 +448,41 @@ void handleRoot() {
     server.send(200, "text/html", htmlPage);
 }
 
-// STM32 命令映射（与 docs/stm32-serial-protocol.md 一致）
+// STM32 命令映射（根据 MOTION_PROTOCOL 配置选择协议格式）
 void sendToSTM32(const char* cmd, int speed, int duration) {
-    // 格式: M,direction,speed,duration\n
     char buffer[64];
+    const char* protocol = MOTION_PROTOCOL;
     
-    if (strcmp(cmd, "F") == 0) {
-        snprintf(buffer, sizeof(buffer), "M,F,%d,%d\n", speed, duration);
-    } else if (strcmp(cmd, "B") == 0) {
-        snprintf(buffer, sizeof(buffer), "M,B,%d,%d\n", speed, duration);
-    } else if (strcmp(cmd, "L") == 0) {
-        snprintf(buffer, sizeof(buffer), "M,L,%d,%d\n", speed, duration);
-    } else if (strcmp(cmd, "R") == 0) {
-        snprintf(buffer, sizeof(buffer), "M,R,%d,%d\n", speed, duration);
-    } else if (strcmp(cmd, "S") == 0) {
-        snprintf(buffer, sizeof(buffer), "STOP\n");
-    } else if (strcmp(cmd, "PING") == 0) {
+    // 停止命令：两种协议都是 S
+    if (strcmp(cmd, "S") == 0) {
+        snprintf(buffer, sizeof(buffer), "S\n");
+    }
+    // 心跳检测
+    else if (strcmp(cmd, "PING") == 0) {
         snprintf(buffer, sizeof(buffer), "PING\n");
-    } else if (strcmp(cmd, "SENSOR") == 0) {
+    }
+    // 传感器查询
+    else if (strcmp(cmd, "SENSOR") == 0) {
         snprintf(buffer, sizeof(buffer), "SENSOR\n");
-    } else {
-        // 直接发送原始命令
+    }
+    // 运动命令：根据协议选择格式
+    else if (strcmp(cmd, "F") == 0 || strcmp(cmd, "B") == 0 || 
+             strcmp(cmd, "L") == 0 || strcmp(cmd, "R") == 0) {
+        if (strcmp(protocol, "simple") == 0) {
+            // simple协议: F,<ms> / B,<ms> / L,<ms> / R,<ms>
+            snprintf(buffer, sizeof(buffer), "%s,%d\n", cmd, duration);
+        } else {
+            // m-v1协议: M,forward,speed,duration
+            const char* dirName = "forward";
+            if (strcmp(cmd, "B") == 0) dirName = "backward";
+            else if (strcmp(cmd, "L") == 0) dirName = "left";
+            else if (strcmp(cmd, "R") == 0) dirName = "right";
+            float speedFloat = speed / 100.0f;
+            snprintf(buffer, sizeof(buffer), "M,%s,%.2f,%d\n", dirName, speedFloat, duration);
+        }
+    }
+    // 其他命令：直接发送
+    else {
         snprintf(buffer, sizeof(buffer), "%s\n", cmd);
     }
     
