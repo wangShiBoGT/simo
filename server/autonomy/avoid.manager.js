@@ -13,6 +13,7 @@
  */
 
 import * as serial from '../serial.js';
+import hardwareConfig from '../hardware.config.js';
 
 // 自主模式状态 - 默认关闭，需要用户手动启动
 let autonomyEnabled = false;
@@ -21,25 +22,29 @@ let autonomyStartedByUser = false;  // 标记是否由用户主动启动
 let scanInterval = null;
 let lastScanResult = null;
 
-// 配置参数
+// 从统一配置读取阈值（P0-3: 安全阈值配置化）
+const thresholds = hardwareConfig.safety?.obstacleThresholds || { danger: 15, caution: 30, safe: 50 };
+const capabilities = hardwareConfig.capabilities || {};
+
+// 配置参数（阈值从统一配置读取）
 const CONFIG = {
-  // 距离阈值（cm）
-  DANGER_DISTANCE: 15,      // 危险距离，必须停止
-  CAUTION_DISTANCE: 30,     // 警戒距离，减速或转向
-  SAFE_DISTANCE: 50,        // 安全距离，可以前进
+  // 距离阈值（cm）- 从 hardware.config.js 统一读取
+  DANGER_DISTANCE: thresholds.danger,
+  CAUTION_DISTANCE: thresholds.caution,
+  SAFE_DISTANCE: thresholds.safe,
   
-  // 舵机角度
-  SERVO_LEFT: 150,          // 左侧扫描角度
-  SERVO_CENTER: 90,         // 正前方
-  SERVO_RIGHT: 30,          // 右侧扫描角度
+  // 舵机角度（仅在 capabilities.servo=true 时生效）
+  SERVO_LEFT: 150,
+  SERVO_CENTER: 90,
+  SERVO_RIGHT: 30,
   
   // 时间参数（ms）
-  SCAN_DELAY: 300,          // 舵机转动后等待时间
-  MOVE_DURATION: 400,       // 单次移动时间
-  TURN_DURATION: 300,       // 单次转向时间
+  SCAN_DELAY: 300,
+  MOVE_DURATION: 400,
+  TURN_DURATION: 300,
   
   // 扫描间隔（ms）
-  SCAN_INTERVAL: 500        // 自动扫描间隔
+  SCAN_INTERVAL: 500
 };
 
 /**
@@ -53,8 +58,10 @@ export function startAutonomy(mode = 'exploring') {
   
   console.log('🤖 [Autonomy] 自主避障模式启动');
   
-  // 舵机归中
-  serial.sendServo(CONFIG.SERVO_CENTER);
+  // 舵机归中（仅在舵机可用时）
+  if (capabilities.servo) {
+    serial.sendServo(CONFIG.SERVO_CENTER);
+  }
   
   // 启动扫描循环
   scanInterval = setInterval(autonomyLoop, CONFIG.SCAN_INTERVAL);
@@ -79,8 +86,10 @@ export function stopAutonomy() {
   // 停止运动
   serial.sendStop();
   
-  // 舵机归中
-  serial.sendServo(CONFIG.SERVO_CENTER);
+  // 舵机归中（仅在舵机可用时）
+  if (capabilities.servo) {
+    serial.sendServo(CONFIG.SERVO_CENTER);
+  }
   
   console.log('🤖 [Autonomy] 自主避障模式停止');
   
@@ -164,12 +173,23 @@ async function handleInfraredObstacle(irLeft, irRight) {
 }
 
 /**
- * 舵机扫描（左中右）
+ * 舵机扫描（左中右）- 仅在舵机可用时执行
  */
 async function performScan() {
-  console.log('🤖 [Autonomy] 开始舵机扫描');
-  
   const result = { left: null, center: null, right: null };
+  
+  // 舵机不可用时，只读取正前方传感器
+  if (!capabilities.servo) {
+    console.log('🤖 [Autonomy] 舵机不可用，仅读取正前方');
+    serial.send('SENSOR');
+    await delay(100);
+    result.center = serial.getSensorData().ultrasonic?.distance;
+    lastScanResult = result;
+    await makeDecision(result);
+    return result;
+  }
+  
+  console.log('🤖 [Autonomy] 开始舵机扫描');
   
   // 扫描左侧
   serial.sendServo(CONFIG.SERVO_LEFT);

@@ -1196,9 +1196,10 @@ const handleRequest = async (req, res) => {
     return
   }
   
-  // 硬件状态查询接口
+  // 硬件状态查询接口（P1-3: 能力开关API）
   if (url.pathname === '/api/hardware/status' && req.method === 'GET') {
     console.log('🔧 硬件状态查询')
+    const serialStatus = serial.getStatus()
     
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({
@@ -1207,10 +1208,17 @@ const handleRequest = async (req, res) => {
         display: { connected: false, type: null },
         audio: { connected: true, type: 'browser' },
         vision: { connected: false, type: null },
-        motion: { connected: false, type: null },
-        sensors: { connected: false, type: null }
+        motion: { connected: serialStatus.connected, type: 'serial' },
+        sensors: { connected: serialStatus.connected, type: 'stm32' }
       },
-      level: 'L0',  // 当前硬件等级
+      // 固件能力声明（从统一配置读取）
+      capabilities: hardwareConfig.capabilities || {},
+      // 协议配置
+      protocol: hardwareConfig.protocol || { version: 'simple' },
+      // 安全阈值（UI可展示当前生效值）
+      safetyThresholds: hardwareConfig.safety?.obstacleThresholds || {},
+      level: hardwareConfig.level || 'L0',
+      serial: serialStatus,
       timestamp: new Date().toISOString()
     }))
     return

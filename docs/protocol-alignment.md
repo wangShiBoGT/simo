@@ -66,19 +66,28 @@ void sendToSTM32(const char* cmd, int speed, int duration) {
 }
 ```
 
-## Node端改造清单（待做）
+## Node端改造清单（已完成）
 
-### 1. ConfirmManager.execute
+### 1. ConfirmManager.execute ✅
 **问题**：直接拼串口字符串，绕过统一入口
-**改法**：调用 `serial.sendMove()/sendStop()`
+**修复**：改用 `serial.sendMove()/sendStop()`
 
-### 2. serial.js
+### 2. serial.js ✅
 **问题**：`sendMove()` 发送 M 协议格式
-**改法**：添加 `MotionProtocolAdapter`，根据配置选择格式
+**修复**：添加 `motionProtocol` 配置，自动选择格式
 
-### 3. avoid.manager.js
-**问题**：Autonomy 直接 `serial.send(...)`，绕过安全体系
-**改法**：只产出 Intent，由 suggestionQueue 驱动执行
+### 3. avoid.manager.js ✅
+**问题**：Autonomy 直接 `serial.send(...)`
+**修复**：改用 `serial.sendMove()`，阈值从统一配置读取
+
+### 4. hardware.config.js ✅
+**新增**：
+- `safety.obstacleThresholds` 统一阈值配置
+- `capabilities` 固件能力声明
+- `protocol` 协议配置
+
+### 5. /api/hardware/status ✅
+**新增**：返回能力开关、协议版本、安全阈值
 
 ## 测试用例
 

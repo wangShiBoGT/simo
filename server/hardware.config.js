@@ -157,7 +157,7 @@ export default {
     }
   },
   
-  // ============ 安全配置 ============
+  // ============ 安全配置（统一阈值来源） ============
   safety: {
     // 紧急停止
     emergencyStop: {
@@ -165,10 +165,18 @@ export default {
       phrases: ['停', '等等', '别动', '紧急停止']
     },
     
+    // 避障阈值（cm）- 所有模块统一从此读取
+    obstacleThresholds: {
+      danger: 15,      // 危险距离，必须立即停止
+      caution: 30,     // 警戒距离，减速或转向
+      safe: 50         // 安全距离，可正常前进
+    },
+    
     // 移动限制
     motionLimits: {
-      maxSpeed: 0.3,  // m/s
-      obstacleDistance: 0.5,  // m
+      maxSpeed: 0.3,       // m/s
+      maxDuration: 3000,   // 单次最长运动时间 ms
+      minDuration: 50,     // 单次最短运动时间 ms
       cliffDetection: true
     },
     
@@ -178,5 +186,22 @@ export default {
       quietHoursStart: 23,  // 23:00
       quietHoursEnd: 7      // 07:00
     }
+  },
+  
+  // ============ 固件能力声明 ============
+  capabilities: {
+    motion: true,        // 运动控制
+    servo: false,        // 舵机（simo_robot_simple不支持）
+    ultrasonic: true,    // 超声波传感器
+    infrared: true,      // 红外避障
+    buzzer: true,        // 蜂鸣器
+    heartbeat: true      // 心跳检测
+  },
+  
+  // ============ 协议配置 ============
+  protocol: {
+    version: 'simple',   // 'simple' | 'm-v1'
+    lineEnding: '\n',    // 命令换行符
+    responseEnding: '\r\n'  // 响应换行符
   }
 }
