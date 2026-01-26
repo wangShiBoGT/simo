@@ -208,9 +208,21 @@ export default {
   
   // ============ ESP32配置 ============
   esp32: {
-    ip: '192.168.0.109',      // ESP32局域网IP
-    apIP: '192.168.4.1',      // ESP32热点IP
+    // 动态注册后自动更新，无需手动配置IP
     latestVersion: '2.4.1',   // 最新固件版本
-    firmwarePath: './esp32/.pio/build/esp32-s3-devkitc-1/firmware.bin'
+    firmwarePath: './esp32/.pio/build/esp32-s3-devkitc-1/firmware.bin',
+    // 设备心跳超时（毫秒）
+    heartbeatTimeout: 120000
+  },
+  
+  // ============ 后端部署配置 ============
+  // 开发环境使用本地IP，生产环境使用公网域名
+  backend: {
+    // 本地开发
+    localIP: '192.168.0.107',
+    localPort: 3001,
+    // 生产环境（部署后配置）
+    domain: '',  // 如 'simo.your-domain.com'
+    useHttps: false
   }
 }
