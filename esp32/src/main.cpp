@@ -27,9 +27,9 @@
 #define AP_PASSWORD "simo1234"
 
 // WiFi STA 模式（连接家庭网络，访问Simo后端）
-// 留空则不连接家庭网络，可通过Web页面配置
-#define STA_SSID ""        // 你的家庭 WiFi 名称
-#define STA_PASSWORD ""    // 你的家庭 WiFi 密码
+// 注意：ESP32只支持2.4GHz WiFi，不支持5GHz
+#define STA_SSID "ZTMAP"           // 家庭 WiFi 名称（2.4GHz）
+#define STA_PASSWORD "ztmap@416"   // 家庭 WiFi 密码
 #define SIMO_BACKEND ""    // Simo后端地址，如 http://192.168.1.100:3001
 
 // OTA服务器配置（服务器推送模式）
@@ -1026,9 +1026,28 @@ void setup() {
     IPAddress apIP = WiFi.softAPIP();
     Serial.printf("  AP热点: %s (%s)\n", AP_SSID, apIP.toString().c_str());
     
-    // 尝试连接已保存的WiFi
+    // 尝试连接WiFi（优先使用NVS保存的，其次使用硬编码的）
     if (savedSSID.length() > 0) {
         tryConnectSavedWiFi();
+    } else if (strlen(STA_SSID) > 0) {
+        // 使用硬编码的WiFi配置
+        Serial.printf("[WiFi] 尝试连接硬编码WiFi: %s\n", STA_SSID);
+        WiFi.begin(STA_SSID, STA_PASSWORD);
+        
+        int retry = 0;
+        while (WiFi.status() != WL_CONNECTED && retry < 20) {
+            delay(500);
+            Serial.print(".");
+            retry++;
+        }
+        
+        if (WiFi.status() == WL_CONNECTED) {
+            staConnected = true;
+            homeIP = WiFi.localIP().toString();
+            Serial.printf("\n[WiFi] 已连接家庭网络: %s\n", homeIP.c_str());
+        } else {
+            Serial.println("\n[WiFi] 家庭网络连接失败");
+        }
     }
     
     // Phase 2: 服务启动
