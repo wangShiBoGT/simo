@@ -782,13 +782,11 @@ const char* wifiSetupPage = R"rawliteral(
     <div class="box">
         <button class="scan" onclick="scan()">扫描WiFi网络</button>
         <div id="networks"></div>
-        <form action="/wifi/save" method="POST">
-            <label>WiFi名称 (SSID)</label>
-            <input type="text" name="ssid" id="ssid" required>
-            <label>WiFi密码</label>
-            <input type="password" name="password" id="password">
-            <button type="submit">保存并连接</button>
-        </form>
+        <label>WiFi名称 (SSID)</label>
+        <input type="text" id="ssid" required>
+        <label>WiFi密码</label>
+        <input type="password" id="password">
+        <button onclick="saveWifi()">保存并连接</button>
         <p class="status" id="status"></p>
     </div>
     <script>
@@ -807,6 +805,16 @@ const char* wifiSetupPage = R"rawliteral(
         }
         function selectNet(ssid) {
             document.getElementById('ssid').value = ssid;
+        }
+        function saveWifi() {
+            const ssid = document.getElementById('ssid').value;
+            const pass = document.getElementById('password').value;
+            if (!ssid) { document.getElementById('status').innerText = '请输入WiFi名称'; return; }
+            document.getElementById('status').innerText = '正在连接...';
+            fetch('/wifi/save', { method: 'POST', body: new URLSearchParams({ssid: ssid, password: pass}) })
+                .then(r => r.text()).then(t => {
+                    document.getElementById('status').innerHTML = t;
+                });
         }
     </script>
 </body>
