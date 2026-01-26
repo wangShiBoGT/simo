@@ -38,9 +38,11 @@
 // OTA服务器配置（指向Node后端）
 #define OTA_CHECK_INTERVAL 300000  // OTA检查间隔（毫秒），5分钟
 
-// STM32 串口（GPIO43=TX, GPIO44=RX）
-#define STM32_TX 43
-#define STM32_RX 44
+// STM32 串口（GPIO4=TX, GPIO5=RX）
+// 注意：GPIO43/44 是 USB-UART 调试引脚，不能用于其他串口通信
+// GPIO4/5 是安全的通用 GPIO
+#define STM32_TX 4
+#define STM32_RX 5
 #define STM32_BAUD 115200
 
 // 运动协议配置（选择与STM32固件匹配的协议）
@@ -61,7 +63,8 @@ bool stm32Connected = false;
 unsigned long lastStm32Ping = 0;
 unsigned long lastSensorRead = 0;
 int lastDistance = 0;
-bool leftIR = false, rightIR = false;
+bool leftIR = false, rightIR = false;      // 红外避障
+bool leftTrack = false, rightTrack = false; // 红外循迹
 
 // WiFi状态
 bool staConnected = false;
@@ -527,13 +530,17 @@ void handleStatus() {
     const char* modeNames[] = {"idle", "manual", "patrol", "follow", "return"};
     char json[512];
     snprintf(json, sizeof(json),
-        "{\"stm32\":%s,\"distance\":%d,\"leftIR\":%s,\"rightIR\":%s,"
+        "{\"stm32\":%s,\"distance\":%d,"
+        "\"leftIR\":%s,\"rightIR\":%s,"
+        "\"leftTrack\":%s,\"rightTrack\":%s,"
         "\"mode\":\"%s\",\"modeId\":%d,"
         "\"heap\":%lu,\"uptime\":%lu,\"version\":\"%s\"}",
         stm32Connected ? "true" : "false",
         lastDistance,
         leftIR ? "true" : "false",
         rightIR ? "true" : "false",
+        leftTrack ? "true" : "false",
+        rightTrack ? "true" : "false",
         modeNames[currentMode],
         currentMode,
         ESP.getFreeHeap(),
@@ -1173,8 +1180,9 @@ void setup() {
 }
 
 // 解析STM32传感器响应
+// 新格式: SENSOR,D<dist>,OL<l>OR<r>,TL<l>TR<r>
 void parseSensorResponse(String& resp) {
-    // 格式: SENSOR,D123,L0R1
+    // 距离: D<value>
     int dIdx = resp.indexOf('D');
     if (dIdx >= 0) {
         int comma = resp.indexOf(',', dIdx);
@@ -1182,14 +1190,36 @@ void parseSensorResponse(String& resp) {
         lastDistance = resp.substring(dIdx + 1, comma).toInt();
     }
     
-    int lIdx = resp.indexOf('L');
-    if (lIdx >= 0 && lIdx + 1 < resp.length()) {
-        leftIR = resp.charAt(lIdx + 1) == '1';
+    // 红外避障: OL<0/1>OR<0/1>
+    int olIdx = resp.indexOf("OL");
+    if (olIdx >= 0 && olIdx + 2 < resp.length()) {
+        leftIR = resp.charAt(olIdx + 2) == '1';
+    }
+    int orIdx = resp.indexOf("OR");
+    if (orIdx >= 0 && orIdx + 2 < resp.length()) {
+        rightIR = resp.charAt(orIdx + 2) == '1';
     }
     
-    int rIdx = resp.indexOf('R');
-    if (rIdx >= 0 && rIdx + 1 < resp.length()) {
-        rightIR = resp.charAt(rIdx + 1) == '1';
+    // 红外循迹: TL<0/1>TR<0/1>
+    int tlIdx = resp.indexOf("TL");
+    if (tlIdx >= 0 && tlIdx + 2 < resp.length()) {
+        leftTrack = resp.charAt(tlIdx + 2) == '1';
+    }
+    int trIdx = resp.indexOf("TR");
+    if (trIdx >= 0 && trIdx + 2 < resp.length()) {
+        rightTrack = resp.charAt(trIdx + 2) == '1';
+    }
+    
+    // 兼容旧格式: SENSOR,D123,L0R1
+    if (olIdx < 0) {
+        int lIdx = resp.indexOf('L');
+        if (lIdx >= 0 && lIdx + 1 < resp.length() && resp.charAt(lIdx + 1) != 'O') {
+            leftIR = resp.charAt(lIdx + 1) == '1';
+        }
+        int rIdx = resp.indexOf('R');
+        if (rIdx >= 0 && rIdx + 1 < resp.length() && resp.charAt(rIdx + 1) != 'O') {
+            rightIR = resp.charAt(rIdx + 1) == '1';
+        }
     }
 }
 

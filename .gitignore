@@ -28,3 +28,7 @@ Thumbs.db
 # 临时文件
 *.tmp
 *.temp
+
+# PlatformIO（ESP32 编译缓存）
+esp32/.pio/
+.pio/
