@@ -384,8 +384,9 @@ const char* htmlPage = R"rawliteral(
             const ssid = document.getElementById('ssidInput').value;
             const pass = document.getElementById('passInput').value;
             if (!ssid) { toast('请输入WiFi名称'); return; }
+            toast('正在连接...');
             fetch('/wifi/save', { method: 'POST', body: new URLSearchParams({ssid: ssid, password: pass}) })
-                .then(r => r.text()).then(t => toast('保存成功，重启中...'));
+                .then(r => r.text()).then(t => { toast(t.includes('成功') ? '连接成功!' : '连接失败'); setTimeout(() => location.reload(), 2000); });
         }
         
         // 清除WiFi
