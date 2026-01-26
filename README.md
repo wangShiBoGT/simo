@@ -258,6 +258,15 @@ L3 智能交互 ← 架构设计中
 - 连接结果实时显示在页面上
 - 支持2.4GHz网络（ESP32不支持5GHz）
 
+**P0工程化改进**：
+- 阈值单一事实源：SafetyManager从`hardware.config.js`读取
+- 运动指令duration强制限制：100-2000ms
+- 能力开关API：`/api/hardware/status`返回capabilities
+- 冒烟测试脚本：`node scripts/smoke-test.js`
+- 压测脚本：`node scripts/stress-test.js`
+- 协议规范文档：`docs/protocol-spec.md`
+- 硬件连接检查清单：`docs/hardware-connection-checklist.md`
+
 | 项目 | 状态 | 说明 |
 |------|------|------|
 | ESP32-S3-N16R8 主板 | ✅ 已到货 | 16MB Flash + 8MB PSRAM |
