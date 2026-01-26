@@ -837,9 +837,32 @@ void handleWiFiSave() {
     
     if (ssid.length() > 0) {
         saveWiFiCredentials(ssid, password);
-        server.send(200, "text/html", "<h2>保存成功!</h2><p>正在重启连接...</p><script>setTimeout(function(){location.href='/';},3000);</script>");
-        delay(1000);
-        ESP.restart();
+        
+        // 直接尝试连接，不重启
+        Serial.printf("[WiFi] 尝试连接: %s\n", ssid.c_str());
+        WiFi.begin(ssid.c_str(), password.c_str());
+        
+        int retry = 0;
+        while (WiFi.status() != WL_CONNECTED && retry < 30) {
+            delay(500);
+            Serial.print(".");
+            retry++;
+        }
+        
+        if (WiFi.status() == WL_CONNECTED) {
+            staConnected = true;
+            homeIP = WiFi.localIP().toString();
+            Serial.printf("\n[WiFi] 已连接: %s\n", homeIP.c_str());
+            
+            char html[256];
+            snprintf(html, sizeof(html), 
+                "<h2>连接成功!</h2><p>局域网IP: <b>%s</b></p><script>setTimeout(function(){location.href='/';},3000);</script>",
+                homeIP.c_str());
+            server.send(200, "text/html", html);
+        } else {
+            Serial.println("\n[WiFi] 连接失败");
+            server.send(200, "text/html", "<h2>连接失败</h2><p>请检查密码是否正确</p><a href='/wifi'>重试</a>");
+        }
     } else {
         server.send(400, "text/plain", "SSID不能为空");
     }
