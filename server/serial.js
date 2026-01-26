@@ -30,7 +30,11 @@ let sensorCache = {
 let config = {
   enabled: false,
   port: null,
-  baudRate: 115200  // Simo固件使用 115200
+  baudRate: 115200,  // Simo固件使用 115200
+  // 运动协议配置
+  // "simple" = simo_robot_simple固件: F,<ms> / B,<ms> / L,<ms> / R,<ms> / S
+  // "m-v1"   = simo_robot固件: M,forward,speed,duration / S
+  motionProtocol: 'simple'
 }
 
 /**
@@ -239,15 +243,30 @@ export const send = (command) => {
 }
 
 /**
- * 发送移动命令（Simo固件协议）
- * 协议格式：M,direction,speed,duration
- * @param {string} direction - forward/backward/left/right
- * @param {number} speed - 速度 0~1
+ * 发送移动命令（根据 motionProtocol 配置选择协议格式）
+ * @param {string} direction - forward/backward/left/right 或 F/B/L/R
+ * @param {number} speed - 速度 0~1（simple协议忽略）
  * @param {number} durationMs - 持续时间 ms
  */
 export const sendMove = (direction, speed = 0.5, durationMs = 500) => {
-  // Simo固件协议：M,direction,speed,duration
-  const cmd = `M,${direction},${speed.toFixed(2)},${durationMs}`
+  let cmd = ''
+  
+  // 方向映射：统一转换为单字母格式
+  const dirMap = {
+    'forward': 'F', 'backward': 'B', 'left': 'L', 'right': 'R',
+    'F': 'F', 'B': 'B', 'L': 'L', 'R': 'R'
+  }
+  const dirLetter = dirMap[direction] || 'F'
+  
+  if (config.motionProtocol === 'simple') {
+    // simple协议: F,<ms> / B,<ms> / L,<ms> / R,<ms>
+    cmd = `${dirLetter},${durationMs}`
+  } else {
+    // m-v1协议: M,forward,speed,duration
+    const dirName = { 'F': 'forward', 'B': 'backward', 'L': 'left', 'R': 'right' }[dirLetter]
+    cmd = `M,${dirName},${speed.toFixed(2)},${durationMs}`
+  }
+  
   return send(cmd)
 }
 

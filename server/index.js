@@ -44,7 +44,7 @@ const safetyManager = new SafetyManager({
     console.log(`🛑 [Safety] 安全停止: ${signal}`);
     const serialStatus = serial.getStatus();
     if (serialStatus.connected) {
-      serial.sendRaw('S\r\n');
+      serial.sendStop();
     }
     forceStop();
     // C 阶段：安全阻止时清空建议队列
@@ -64,14 +64,14 @@ const confirmManager = new ConfirmManager({
       return;
     }
     
-    // 执行硬件命令
+    // 执行硬件命令（通过统一的协议入口）
     const serialStatus = serial.getStatus();
     if (serialStatus.connected) {
       if (intent.intent === 'STOP') {
-        serial.sendRaw('S\r\n');
+        serial.sendStop();
       } else {
-        const cmd = `${intent.direction},${intent.duration_ms}\r\n`;
-        serial.sendRaw(cmd);
+        // 使用统一的sendMove，自动根据协议配置选择格式
+        serial.sendMove(intent.direction, 0.5, intent.duration_ms || 500);
       }
       console.log(`🤖 执行: ${intent.intent} ${intent.direction || ''} ${intent.duration_ms || ''}`);
     }
@@ -1133,7 +1133,7 @@ const handleRequest = async (req, res) => {
       if (intent.intent === 'BEEP') {
         const serialStatus = serial.getStatus()
         if (serialStatus.connected) {
-          serial.sendRaw('BEEP\r\n')
+          serial.send('BEEP')
           console.log(`   → 蜂鸣器: BEEP`)
         }
         res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -1176,7 +1176,7 @@ const handleRequest = async (req, res) => {
     const serialStatus = serial.getStatus()
     let executed = false
     if (serialStatus.connected) {
-      serial.sendRaw('S\r\n')
+      serial.sendStop()
       executed = true
     }
     

@@ -125,12 +125,12 @@ async function autonomyLoop() {
       return;
     }
     
-    // 4. 安全，继续前进
+    // 4. 安全，继续前进（使用统一的sendMove协议入口）
     if (autonomyMode === 'exploring' && distance !== null && distance > CONFIG.SAFE_DISTANCE) {
-      serial.send(`F,${CONFIG.MOVE_DURATION}`);
+      serial.sendMove('F', 0.5, CONFIG.MOVE_DURATION);
     } else if (autonomyMode === 'exploring' && (distance === null || distance > CONFIG.CAUTION_DISTANCE)) {
       // 距离未知或在警戒范围外，谨慎前进
-      serial.send(`F,${Math.floor(CONFIG.MOVE_DURATION / 2)}`);
+      serial.sendMove('F', 0.5, Math.floor(CONFIG.MOVE_DURATION / 2));
     }
     
   } catch (error) {
@@ -151,15 +151,15 @@ async function handleInfraredObstacle(irLeft, irRight) {
   if (irLeft === 0 && irRight === 0) {
     // 两边都有障碍，后退
     console.log('🤖 [Autonomy] 两侧障碍，后退');
-    serial.send(`B,${CONFIG.MOVE_DURATION}`);
+    serial.sendMove('B', 0.5, CONFIG.MOVE_DURATION);
   } else if (irLeft === 0) {
     // 左边有障碍，右转
     console.log('🤖 [Autonomy] 左侧障碍，右转');
-    serial.send(`R,${CONFIG.TURN_DURATION}`);
+    serial.sendMove('R', 0.5, CONFIG.TURN_DURATION);
   } else {
     // 右边有障碍，左转
     console.log('🤖 [Autonomy] 右侧障碍，左转');
-    serial.send(`L,${CONFIG.TURN_DURATION}`);
+    serial.sendMove('L', 0.5, CONFIG.TURN_DURATION);
   }
 }
 
@@ -225,22 +225,22 @@ async function makeDecision(scan) {
   if (best.dist < CONFIG.DANGER_DISTANCE) {
     // 全部危险，后退
     console.log('🤖 [Autonomy] 全方向危险，后退');
-    serial.send(`B,${CONFIG.MOVE_DURATION}`);
+    serial.sendMove('B', 0.5, CONFIG.MOVE_DURATION);
     return;
   }
   
-  // 转向最佳方向
+  // 转向最佳方向（使用统一的sendMove协议入口）
   if (best.dir === 'left') {
     console.log('🤖 [Autonomy] 执行左转');
-    serial.send(`L,${CONFIG.TURN_DURATION}`);
+    serial.sendMove('L', 0.5, CONFIG.TURN_DURATION);
   } else if (best.dir === 'right') {
     console.log('🤖 [Autonomy] 执行右转');
-    serial.send(`R,${CONFIG.TURN_DURATION}`);
+    serial.sendMove('R', 0.5, CONFIG.TURN_DURATION);
   } else {
     // 正前方最好，前进
     if (autonomyMode === 'exploring' && best.dist > CONFIG.CAUTION_DISTANCE) {
       console.log('🤖 [Autonomy] 前方安全，前进');
-      serial.send(`F,${CONFIG.MOVE_DURATION}`);
+      serial.sendMove('F', 0.5, CONFIG.MOVE_DURATION);
     }
   }
 }

@@ -46,7 +46,7 @@ PING\n                       心跳
 | 端 | 协议配置 | 状态 |
 |----|----------|------|
 | ESP32 | `MOTION_PROTOCOL = "simple"` | ✅ 已对齐 |
-| Node | 待改造 | ⏳ |
+| Node | `motionProtocol = "simple"` | ✅ 已对齐 |
 | STM32 | 烧录simo_robot_simple | ✅ |
 
 ## ESP32 实现
