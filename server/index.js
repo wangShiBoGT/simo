@@ -1224,6 +1224,52 @@ const handleRequest = async (req, res) => {
     return
   }
   
+  // ============ ESP32 OTA推送API ============
+  // 获取ESP32当前版本信息
+  if (url.pathname === '/api/esp32/info' && req.method === 'GET') {
+    try {
+      const esp32IP = hardwareConfig.esp32?.ip || '192.168.0.109'
+      const response = await fetch(`http://${esp32IP}/info`, { signal: AbortSignal.timeout(5000) })
+      const data = await response.json()
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ success: true, esp32: data, ip: esp32IP }))
+    } catch (e) {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ success: false, error: e.message }))
+    }
+    return
+  }
+  
+  // ESP32 OTA更新检查接口（供ESP32调用）
+  if (url.pathname === '/api/ota/check' && req.method === 'GET') {
+    const deviceVersion = url.searchParams.get('version') || '0.0.0'
+    const latestVersion = hardwareConfig.esp32?.latestVersion || '2.4.0'
+    const updateAvailable = deviceVersion !== latestVersion
+    
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({
+      update: updateAvailable,
+      version: latestVersion,
+      url: updateAvailable ? `http://${req.headers.host}/api/ota/firmware` : null
+    }))
+    return
+  }
+  
+  // 向ESP32推送OTA更新命令
+  if (url.pathname === '/api/esp32/ota/push' && req.method === 'POST') {
+    try {
+      const esp32IP = hardwareConfig.esp32?.ip || '192.168.0.109'
+      const response = await fetch(`http://${esp32IP}/ota/check`, { signal: AbortSignal.timeout(10000) })
+      const result = await response.text()
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ success: true, result }))
+    } catch (e) {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ success: false, error: e.message }))
+    }
+    return
+  }
+  
   // 404
   res.writeHead(404, { 'Content-Type': 'application/json' })
   res.end(JSON.stringify({ error: 'Not Found' }))

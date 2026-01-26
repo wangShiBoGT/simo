@@ -204,5 +204,13 @@ export default {
     version: 'simple',   // 'simple' | 'm-v1'
     lineEnding: '\n',    // 命令换行符
     responseEnding: '\r\n'  // 响应换行符
+  },
+  
+  // ============ ESP32配置 ============
+  esp32: {
+    ip: '192.168.0.109',      // ESP32局域网IP
+    apIP: '192.168.4.1',      // ESP32热点IP
+    latestVersion: '2.4.0',   // 最新固件版本
+    firmwarePath: './esp32/.pio/build/esp32-s3-devkitc-1/firmware.bin'
   }
 }
