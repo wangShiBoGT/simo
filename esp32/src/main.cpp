@@ -19,6 +19,7 @@
 #include <DNSServer.h>
 #include <Preferences.h>
 #include "esp_camera.h"
+#include "esp_wifi.h"
 #include "camera_config.h"
 #include "face_detect.h"
 
@@ -1244,7 +1245,7 @@ void handleCameraCapture() {
     ensureCamMode(CAM_IDLE);
 }
 
-// MJPEG视频流（长连接，独占摄像头）
+// MJPEG视频流（长连接，独占摄像头，低延迟优化）
 void handleCameraStream() {
     if (!cameraInitialized) {
         server.send(503, "application/json", "{\"error\":\"Camera not initialized\"}");
@@ -1269,32 +1270,76 @@ void handleCameraStream() {
     }
     
     WiFiClient client = server.client();
+    client.setNoDelay(true);  // 禁用 Nagle 算法，减少延迟
     
-    // 使用静态缓冲区发送响应头
-    client.print("HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace; boundary=frame\r\nAccess-Control-Allow-Origin: *\r\n\r\n");
+    // 发送响应头（非 chunked）
+    client.print("HTTP/1.1 200 OK\r\n"
+                 "Content-Type: multipart/x-mixed-replace; boundary=frame\r\n"
+                 "Access-Control-Allow-Origin: *\r\n"
+                 "Cache-Control: no-cache\r\n"
+                 "Connection: keep-alive\r\n\r\n");
     
-    Serial.println("[Camera] 视频流开始");
+    Serial.println("[Camera] 视频流开始（低延迟模式）");
+    
+    // 静态帧头缓冲区
+    static char frameHeader[100];
+    static const char* boundary = "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ";
+    static const char* headerEnd = "\r\n\r\n";
+    static const char* frameEnd = "\r\n";
+    
+    unsigned long lastFrameTime = 0;
+    const unsigned long minFrameInterval = 50;  // 约20fps上限，更稳定
     
     while (client.connected()) {
+        // 帧率限制（避免过快消耗资源）
+        unsigned long now = millis();
+        if (now - lastFrameTime < minFrameInterval) {
+            delay(1);  // 最小延迟，让出CPU
+            continue;
+        }
+        lastFrameTime = now;
+        
         camera_fb_t *fb = esp_camera_fb_get();
         if (!fb) {
             Serial.println("[Camera] 获取帧失败");
+            delay(10);
+            continue;  // 重试而不是退出
+        }
+        
+        // 构建完整帧头
+        int headerLen = snprintf(frameHeader, sizeof(frameHeader), 
+            "%s%u%s", boundary, fb->len, headerEnd);
+        
+        // 丢帧保实时：缓冲不够（包括 0）就直接丢帧，避免阻塞写
+        size_t need = headerLen + fb->len + 2;
+        int canWrite = client.availableForWrite();
+        if ((size_t)canWrite < need) {
+            esp_camera_fb_return(fb);
+            delay(1);  // 让出 CPU，别忙等
+            continue;
+        }
+        
+        // 一次性发送帧头 + 数据 + 帧尾
+        size_t totalLen = headerLen + fb->len + 2;
+        
+        // 发送帧头
+        if (client.write((uint8_t*)frameHeader, headerLen) != headerLen) {
+            esp_camera_fb_return(fb);
             break;
         }
         
-        // 使用静态缓冲区构建帧头
-        char frameHeader[64];
-        snprintf(frameHeader, sizeof(frameHeader), 
-            "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n", fb->len);
+        // 发送 JPEG 数据
+        if (client.write(fb->buf, fb->len) != fb->len) {
+            esp_camera_fb_return(fb);
+            break;
+        }
         
-        client.print(frameHeader);
-        client.write(fb->buf, fb->len);
-        client.print("\r\n");
+        // 发送帧尾
+        client.write((uint8_t*)frameEnd, 2);
         
         esp_camera_fb_return(fb);
         
-        // 控制帧率（约20fps）
-        delay(50);
+        // 无额外 delay，让帧率由摄像头决定
     }
     
     // 解锁摄像头
@@ -1596,6 +1641,12 @@ void setup() {
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP(AP_SSID, AP_PASSWORD);
     
+    // 关闭 WiFi 省电模式，减少视频流延迟
+    WiFi.setSleep(false);
+    esp_wifi_set_ps(WIFI_PS_NONE);
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);  // 最大发射功率
+    Serial.println("  WiFi 省电已关闭，发射功率已最大");
+    
     IPAddress apIP = WiFi.softAPIP();
     Serial.printf("  AP热点: %s (%s)\n", AP_SSID, apIP.toString().c_str());
     
@@ -1833,20 +1884,20 @@ void runAutonomousLogic() {
             if (now - lastPatrolAction >= 500) {
                 lastPatrolAction = now;
                 
-                // 障碍物检测（距离<30cm）
-                if (lastDistance > 0 && lastDistance < 30) {
-                    // 有障碍，停止并转向
-                    sendToSTM32("S");
-                    delay(100);
-                    
-                    // 随机左转或右转
+                // 障碍物检测（距离<30cm）- 非阻塞状态机
+                if (patrolState == 2) {
+                    // 等待停止完成，然后转向
                     if (random(2) == 0) {
                         sendToSTM32("L", 120, 300);
                     } else {
                         sendToSTM32("R", 120, 300);
                     }
                     patrolState = 1;  // 转向中
-                    Serial.printf("[PATROL] 障碍物! D=%dcm, 转向\n", lastDistance);
+                } else if (lastDistance > 0 && lastDistance < 30) {
+                    // 有障碍，停止（下次循环再转向）
+                    sendToSTM32("S");
+                    patrolState = 2;  // 等待停止
+                    Serial.printf("[PATROL] 障碍物! D=%dcm\n", lastDistance);
                 } else if (patrolState == 1) {
                     // 转向完成，继续前进
                     patrolState = 0;

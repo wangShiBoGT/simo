@@ -81,7 +81,7 @@
 #define DETECT_FRAME_SIZE FRAMESIZE_QQVGA  // 检测专用：160x120
 
 // JPEG 质量（10-63，数字越大压缩越多，传输越快）
-#define DEFAULT_JPEG_QUALITY 20  // 平衡质量和速度
+#define DEFAULT_JPEG_QUALITY 35  // 低延迟优先，更高压缩
 
 // ============ 人脸检测专用配置 ============
 // 检测模式使用 RGB565（像素域检测）
@@ -89,8 +89,8 @@
 // 传输模式使用 JPEG（节省带宽）
 #define STREAM_PIXEL_FORMAT PIXFORMAT_JPEG
 
-// 帧缓冲数量（1-3，越多越流畅但占用更多内存）
-#define FB_COUNT 2
+// 帧缓冲数量（GRAB_LATEST 下有效帧数 = fb_count-1）
+#define FB_COUNT 3  // 设 3 实际有 2 个可用，抗网络抖动更好
 
 /**
  * 获取摄像头配置
