@@ -46,13 +46,17 @@ http://localhost:3000
 # 本地构建测试
 docker build -t simo-api .
 docker run -p 3001:3001 simo-api
-
-# 或部署到 Render.com
-# 1. Fork 本仓库到 GitHub
-# 2. 在 Render 创建 Web Service
-# 3. 选择 Docker 环境
-# 4. 自动识别 Dockerfile
 ```
+
+### ☁️ Render 一键部署
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/wangShiBoGT/simo)
+
+或手动部署：
+1. 在 Render 创建 Web Service
+2. 连接 GitHub 仓库 `wangShiBoGT/simo`
+3. 选择 **Docker** 环境
+4. 点击 Deploy
 
 ### 默认配置
 - **大模型**: 智谱 GLM-4-flash（免费）
