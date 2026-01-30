@@ -18,6 +18,9 @@
 #include <HTTPClient.h>
 #include <DNSServer.h>
 #include <Preferences.h>
+#include "esp_camera.h"
+#include "camera_config.h"
+#include "face_detect.h"
 
 // ============ 配置 ============
 #define LED_PIN 48
@@ -38,11 +41,12 @@
 // OTA服务器配置（指向Node后端）
 #define OTA_CHECK_INTERVAL 300000  // OTA检查间隔（毫秒），5分钟
 
-// STM32 串口（GPIO4=TX, GPIO5=RX）
-// 注意：GPIO43/44 是 USB-UART 调试引脚，不能用于其他串口通信
-// GPIO4/5 是安全的通用 GPIO
-#define STM32_TX 4
-#define STM32_RX 5
+// STM32 串口（GPIO38=TX, GPIO39=RX）
+// 注意：GPIO43/44 是 USB-UART 调试引脚，不能用
+// 注意：GPIO4/5 被摄像头 SCCB(I2C) 占用，不能用！
+// 使用 GPIO38/39 作为 STM32 通信串口
+#define STM32_TX 38
+#define STM32_RX 39
 #define STM32_BAUD 115200
 
 // 运动协议配置（选择与STM32固件匹配的协议）
@@ -51,7 +55,7 @@
 #define MOTION_PROTOCOL "simple"
 
 // 版本信息
-#define FIRMWARE_VERSION "2.4.1"
+#define FIRMWARE_VERSION "2.5.0"
 #define BUILD_DATE __DATE__
 
 // ============ 全局变量 ============
@@ -82,6 +86,26 @@ unsigned long lastOTACheck = 0;
 bool otaUpdateAvailable = false;
 String latestVersion = "";
 
+// 摄像头状态
+bool cameraInitialized = false;
+String cameraModel = "unknown";
+
+// ============ 摄像头模式管理（互斥） ============
+enum CamMode {
+    CAM_IDLE = 0,       // 空闲（JPEG QVGA）
+    CAM_STREAM = 1,     // MJPEG 流（长连接占用）
+    CAM_DETECT = 2,     // 人脸检测（RGB565 QQVGA）
+    CAM_VISION = 3,     // 后端识别（JPEG VGA）
+    CAM_CAPTURE = 4     // 拍照（JPEG VGA，短暂）
+};
+volatile CamMode currentCamMode = CAM_IDLE;
+volatile bool camModeLocked = false;  // 是否被长连接占用
+
+// 视觉识别状态
+bool visionEnabled = false;           // 是否启用视觉识别
+unsigned long lastVisionFrame = 0;    // 上次发送帧的时间
+#define VISION_INTERVAL 500           // 视觉帧间隔(ms)，2fps用于识别
+
 // 自主导航状态
 enum RobotMode {
     MODE_IDLE = 0,      // 空闲
@@ -98,6 +122,14 @@ int patrolState = 0;  // 巡逻状态机
 void sendToSTM32(const char* cmd, int speed = 150, int duration = 500);
 void runAutonomousLogic();
 void startProvisioningMode();
+void handleCameraCapture();
+void handleCameraStream();
+void handleCameraStatus();
+void handleVisionControl();
+void sendFrameToBackend();
+void handleFaceDetect();
+void handleFaceStatus();
+void runFaceFollowLoop();
 void loadWiFiCredentials();
 void saveWiFiCredentials(const String& ssid, const String& password);
 void registerToBackend();
@@ -211,6 +243,18 @@ const char* htmlPage = R"rawliteral(
     <!-- 控制页 -->
     <div class="page active" id="pageControl">
         <div class="main">
+            <!-- 摄像头预览 -->
+            <div class="card">
+                <div class="card-title">📷 摄像头 <span id="camStatus" style="font-size:11px;color:#8b949e"></span></div>
+                <div style="text-align:center">
+                    <img id="camView" style="width:100%;max-width:320px;border-radius:8px;background:#000" alt="摄像头">
+                    <div style="margin-top:8px;display:flex;gap:8px;justify-content:center">
+                        <button class="btn btn-secondary" onclick="camCapture()">📸 拍照</button>
+                        <button class="btn btn-primary" id="btnStream" onclick="camToggleStream()">▶️ 开启</button>
+                    </div>
+                </div>
+            </div>
+            
             <!-- 方向控制 -->
             <div class="card">
                 <div class="card-title">⬆️ 运动控制</div>
@@ -342,6 +386,28 @@ const char* htmlPage = R"rawliteral(
             t.innerText = msg;
             t.style.display = 'block';
             setTimeout(() => t.style.display = 'none', 2000);
+        }
+        
+        // 摄像头
+        let streaming = false;
+        function camCapture() {
+            document.getElementById('camView').src = '/camera/capture?' + Date.now();
+            document.getElementById('camStatus').innerText = '已拍照';
+        }
+        function camToggleStream() {
+            const img = document.getElementById('camView');
+            const btn = document.getElementById('btnStream');
+            if (streaming) {
+                img.src = '';
+                btn.innerHTML = '▶️ 开启';
+                document.getElementById('camStatus').innerText = '已停止';
+                streaming = false;
+            } else {
+                img.src = '/camera/stream';
+                btn.innerHTML = '⏹️ 停止';
+                document.getElementById('camStatus').innerText = '直播中';
+                streaming = true;
+            }
         }
         
         // 运动命令
@@ -1070,6 +1136,397 @@ void handleOTACheck() {
     server.send(200, "text/plain", otaUpdateAvailable ? "发现新版本: " + latestVersion : "已是最新版本");
 }
 
+// ============ 摄像头API处理 ============
+
+// 切换分辨率
+void setCameraResolution(framesize_t size) {
+    sensor_t *s = esp_camera_sensor_get();
+    if (s) {
+        s->set_framesize(s, size);
+    }
+}
+
+// 刷帧（切换模式后清除旧缓存）
+void flushCameraFrames(int count = 2) {
+    for (int i = 0; i < count; i++) {
+        camera_fb_t* fb = esp_camera_fb_get();
+        if (fb) esp_camera_fb_return(fb);
+    }
+}
+
+// 统一摄像头模式切换（带互斥和刷帧）
+bool ensureCamMode(CamMode targetMode) {
+    if (!cameraInitialized) return false;
+    
+    // 检查是否被长连接占用
+    if (camModeLocked && targetMode != currentCamMode) {
+        Serial.printf("[Camera] 模式切换被拒绝: 当前被 %d 占用\n", currentCamMode);
+        return false;
+    }
+    
+    // 已是目标模式
+    if (currentCamMode == targetMode) return true;
+    
+    sensor_t *s = esp_camera_sensor_get();
+    if (!s) return false;
+    
+    switch (targetMode) {
+        case CAM_IDLE:
+        case CAM_STREAM:
+            s->set_pixformat(s, PIXFORMAT_JPEG);
+            s->set_framesize(s, FRAMESIZE_QVGA);  // 320x240
+            s->set_quality(s, 20);
+            break;
+            
+        case CAM_DETECT:
+            s->set_pixformat(s, PIXFORMAT_RGB565);
+            s->set_framesize(s, FRAMESIZE_QQVGA);  // 160x120
+            break;
+            
+        case CAM_VISION:
+        case CAM_CAPTURE:
+            s->set_pixformat(s, PIXFORMAT_JPEG);
+            s->set_framesize(s, FRAMESIZE_VGA);  // 640x480
+            s->set_quality(s, 15);
+            break;
+    }
+    
+    // 刷帧清除旧缓存
+    delay(30);
+    flushCameraFrames(2);
+    
+    currentCamMode = targetMode;
+    Serial.printf("[Camera] 切换到模式 %d\n", targetMode);
+    return true;
+}
+
+// 锁定摄像头（长连接占用）
+void lockCamMode(CamMode mode) {
+    currentCamMode = mode;
+    camModeLocked = true;
+}
+
+// 解锁摄像头
+void unlockCamMode() {
+    camModeLocked = false;
+    ensureCamMode(CAM_IDLE);
+}
+
+// 拍照接口 - 返回JPEG图片（高清模式）
+void handleCameraCapture() {
+    if (!cameraInitialized) {
+        server.send(503, "application/json", "{\"error\":\"Camera not initialized\"}");
+        return;
+    }
+    
+    // 切换到拍照模式（带互斥检查）
+    if (!ensureCamMode(CAM_CAPTURE)) {
+        server.send(503, "application/json", "{\"error\":\"Camera busy\"}");
+        return;
+    }
+    
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (!fb) {
+        server.send(500, "application/json", "{\"error\":\"Camera capture failed\"}");
+        return;
+    }
+    
+    // 发送JPEG图片
+    server.sendHeader("Content-Type", "image/jpeg");
+    server.sendHeader("Content-Disposition", "inline; filename=capture.jpg");
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send_P(200, "image/jpeg", (const char*)fb->buf, fb->len);
+    
+    Serial.printf("[Camera] 高清拍照: %dx%d, %d bytes\n", fb->width, fb->height, fb->len);
+    esp_camera_fb_return(fb);
+    
+    // 切回空闲模式
+    ensureCamMode(CAM_IDLE);
+}
+
+// MJPEG视频流（长连接，独占摄像头）
+void handleCameraStream() {
+    if (!cameraInitialized) {
+        server.send(503, "application/json", "{\"error\":\"Camera not initialized\"}");
+        return;
+    }
+    
+    // 切换到流模式并锁定
+    if (!ensureCamMode(CAM_STREAM)) {
+        server.send(503, "application/json", "{\"error\":\"Camera busy\"}");
+        return;
+    }
+    lockCamMode(CAM_STREAM);
+    
+    // 自动关闭冲突的功能
+    if (faceDetectEnabled) {
+        faceDetectEnabled = false;
+        Serial.println("[Camera] Stream 开启，已关闭人脸检测");
+    }
+    if (visionEnabled) {
+        visionEnabled = false;
+        Serial.println("[Camera] Stream 开启，已关闭后端识别");
+    }
+    
+    WiFiClient client = server.client();
+    
+    // 使用静态缓冲区发送响应头
+    client.print("HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace; boundary=frame\r\nAccess-Control-Allow-Origin: *\r\n\r\n");
+    
+    Serial.println("[Camera] 视频流开始");
+    
+    while (client.connected()) {
+        camera_fb_t *fb = esp_camera_fb_get();
+        if (!fb) {
+            Serial.println("[Camera] 获取帧失败");
+            break;
+        }
+        
+        // 使用静态缓冲区构建帧头
+        char frameHeader[64];
+        snprintf(frameHeader, sizeof(frameHeader), 
+            "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n", fb->len);
+        
+        client.print(frameHeader);
+        client.write(fb->buf, fb->len);
+        client.print("\r\n");
+        
+        esp_camera_fb_return(fb);
+        
+        // 控制帧率（约20fps）
+        delay(50);
+    }
+    
+    // 解锁摄像头
+    unlockCamMode();
+    Serial.println("[Camera] 视频流结束");
+}
+
+// 摄像头状态
+void handleCameraStatus() {
+    String json = "{";
+    json += "\"initialized\":" + String(cameraInitialized ? "true" : "false") + ",";
+    json += "\"model\":\"" + cameraModel + "\",";
+    json += "\"visionEnabled\":" + String(visionEnabled ? "true" : "false") + ",";
+    
+    if (cameraInitialized) {
+        sensor_t *s = esp_camera_sensor_get();
+        if (s) {
+            json += "\"framesize\":" + String(s->status.framesize) + ",";
+            json += "\"quality\":" + String(s->status.quality) + ",";
+            json += "\"brightness\":" + String(s->status.brightness) + ",";
+            json += "\"contrast\":" + String(s->status.contrast);
+        }
+    }
+    json += "}";
+    
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200, "application/json", json);
+}
+
+// 视觉识别开关控制
+void handleVisionControl() {
+    String action = server.arg("action");
+    
+    if (action == "start") {
+        if (!cameraInitialized) {
+            server.send(503, "text/plain", "摄像头未初始化");
+            return;
+        }
+        visionEnabled = true;
+        setCameraResolution(FRAMESIZE_VGA);  // 识别用VGA
+        Serial.println("[Vision] 视觉识别已启动");
+        server.send(200, "text/plain", "视觉识别已启动");
+    } else if (action == "stop") {
+        visionEnabled = false;
+        setCameraResolution(FRAMESIZE_QVGA);  // 切回预览
+        Serial.println("[Vision] 视觉识别已停止");
+        server.send(200, "text/plain", "视觉识别已停止");
+    } else {
+        server.send(200, "application/json", 
+            "{\"enabled\":" + String(visionEnabled ? "true" : "false") + "}");
+    }
+}
+
+// 发送帧到后端进行识别
+void sendFrameToBackend() {
+    if (!staConnected || !cameraInitialized) return;
+    
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (!fb) {
+        Serial.println("[Vision] 获取帧失败");
+        return;
+    }
+    
+    HTTPClient http;
+    String url = "http://" + String(SIMO_BACKEND_IP) + ":" + String(SIMO_BACKEND_PORT) + "/api/vision/frame";
+    
+    http.begin(url);
+    http.addHeader("Content-Type", "image/jpeg");
+    http.addHeader("X-Device-MAC", WiFi.macAddress());
+    
+    int httpCode = http.POST(fb->buf, fb->len);
+    
+    if (httpCode == 200) {
+        String response = http.getString();
+        Serial.printf("[Vision] 识别结果: %s\n", response.c_str());
+        
+        // 解析识别结果并执行动作
+        if (response.indexOf("\"action\":\"follow\"") >= 0) {
+            // 跟随模式：根据人脸位置调整方向
+            if (response.indexOf("\"direction\":\"left\"") >= 0) {
+                sendToSTM32("L", 100, 200);
+            } else if (response.indexOf("\"direction\":\"right\"") >= 0) {
+                sendToSTM32("R", 100, 200);
+            } else if (response.indexOf("\"direction\":\"forward\"") >= 0) {
+                sendToSTM32("F", 100, 300);
+            }
+        } else if (response.indexOf("\"action\":\"stop\"") >= 0) {
+            sendToSTM32("S");
+        }
+    } else if (httpCode > 0) {
+        Serial.printf("[Vision] HTTP错误: %d\n", httpCode);
+    } else {
+        Serial.printf("[Vision] 连接失败: %s\n", http.errorToString(httpCode).c_str());
+    }
+    
+    http.end();
+    esp_camera_fb_return(fb);
+}
+
+// ============ 本地人脸检测 API ============
+
+// 本地人脸检测接口（静态缓冲区）
+static char faceDetectJsonBuf[1024];
+
+void handleFaceDetect() {
+    if (!cameraInitialized) {
+        server.send(503, "application/json", "{\"error\":\"Camera not initialized\"}");
+        return;
+    }
+    
+    if (!faceDetectEnabled) {
+        server.send(400, "application/json", "{\"error\":\"Face detection not enabled\"}");
+        return;
+    }
+    
+    // 确保在检测模式
+    if (currentCamMode != CAM_DETECT) {
+        server.send(400, "application/json", "{\"error\":\"Camera not in detect mode\"}");
+        return;
+    }
+    
+    // 获取一帧
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (!fb) {
+        server.send(500, "application/json", "{\"error\":\"Camera capture failed\"}");
+        return;
+    }
+    
+    // 检查帧格式
+    if (fb->format != PIXFORMAT_RGB565) {
+        esp_camera_fb_return(fb);
+        server.send(400, "application/json", "{\"error\":\"Wrong pixel format, need RGB565\"}");
+        return;
+    }
+    
+    // 执行本地人脸检测
+    FaceDetectResult result = detectFaces(fb);
+    esp_camera_fb_return(fb);
+    
+    // 计算跟随方向
+    FollowResult follow = calculateFollowDirection(result);
+    
+    // 使用静态缓冲区构建 JSON（避免 String 拼接）
+    snprintf(faceDetectJsonBuf, sizeof(faceDetectJsonBuf),
+        "{\"face\":%s,\"follow\":%s}",
+        faceResultToJson(result).c_str(),
+        followResultToJson(follow).c_str());
+    
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200, "application/json", faceDetectJsonBuf);
+    
+    Serial.printf("[FaceDetect] 检测完成: detected=%d, dir=%s, time=%dms\n", 
+        result.detected, getDirectionName(follow.direction), result.detectTime);
+}
+
+// 人脸检测状态接口（静态缓冲区）
+static char faceStatusJsonBuf[1024];
+
+void handleFaceStatus() {
+    snprintf(faceStatusJsonBuf, sizeof(faceStatusJsonBuf),
+        "{\"enabled\":%s,\"cameraReady\":%s,\"camMode\":%d,\"lastDetectTime\":%lu,\"lastResult\":%s,\"lastFollow\":%s}",
+        faceDetectEnabled ? "true" : "false",
+        cameraInitialized ? "true" : "false",
+        (int)currentCamMode,
+        lastFaceDetectTime,
+        faceResultToJson(lastFaceResult).c_str(),
+        followResultToJson(lastFollowResult).c_str());
+    
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200, "application/json", faceStatusJsonBuf);
+}
+
+// 人脸跟随循环（在 loop 中调用）
+void runFaceFollowLoop() {
+    if (!faceDetectEnabled || !cameraInitialized) return;
+    if (currentMode != MODE_FOLLOW) return;
+    if (currentCamMode != CAM_DETECT) return;  // 必须在检测模式
+    
+    // 检查检测间隔
+    if (millis() - lastFaceDetectTime < FACE_DETECT_INTERVAL) return;
+    
+    // 获取一帧
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (!fb) return;
+    
+    // 检查帧格式
+    if (fb->format != PIXFORMAT_RGB565) {
+        esp_camera_fb_return(fb);
+        return;
+    }
+    
+    // 执行本地人脸检测
+    FaceDetectResult result = detectFaces(fb);
+    esp_camera_fb_return(fb);
+    
+    if (!result.detected) {
+        // 未检测到人脸，停止
+        if (millis() - lastFaceDetectTime > 2000) {
+            // 超过2秒没检测到，停止移动
+            sendToSTM32("S");
+        }
+        return;
+    }
+    
+    // 计算跟随方向
+    FollowResult follow = calculateFollowDirection(result);
+    
+    if (!follow.shouldMove) return;
+    
+    // 根据方向发送指令
+    switch (follow.direction) {
+        case DIR_LEFT:
+            sendToSTM32("L", 100, 200);
+            Serial.println("[FaceFollow] 左转跟随");
+            break;
+        case DIR_RIGHT:
+            sendToSTM32("R", 100, 200);
+            Serial.println("[FaceFollow] 右转跟随");
+            break;
+        case DIR_FORWARD:
+            sendToSTM32("F", 100, 300);
+            Serial.println("[FaceFollow] 前进靠近");
+            break;
+        case DIR_BACKWARD:
+            sendToSTM32("B", 100, 200);
+            Serial.println("[FaceFollow] 后退");
+            break;
+        default:
+            break;
+    }
+}
+
 // ============ 初始化 ============
 void setup() {
     // 调试串口
@@ -1096,6 +1553,38 @@ void setup() {
     // STM32 串口
     stm32Serial.begin(STM32_BAUD, SERIAL_8N1, STM32_RX, STM32_TX);
     Serial.printf("  STM32串口: TX=%d, RX=%d\n", STM32_TX, STM32_RX);
+    
+    // 摄像头初始化
+    Serial.println("  摄像头初始化...");
+    camera_config_t cameraConfig = getCameraConfig();
+    esp_err_t err = esp_camera_init(&cameraConfig);
+    if (err != ESP_OK) {
+        Serial.printf("  ❌ 摄像头初始化失败: 0x%x\n", err);
+        cameraInitialized = false;
+    } else {
+        cameraInitialized = true;
+        sensor_t *s = esp_camera_sensor_get();
+        if (s) {
+            // 获取摄像头型号
+            switch (s->id.PID) {
+                case OV3660_PID: cameraModel = "OV3660"; break;
+                case OV2640_PID: cameraModel = "OV2640"; break;
+                case OV5640_PID: cameraModel = "OV5640"; break;
+                default: cameraModel = "Unknown"; break;
+            }
+            Serial.printf("  ✅ 摄像头: %s\n", cameraModel.c_str());
+            
+            // 图像质量优化
+            s->set_brightness(s, 0);     // 亮度 -2~2
+            s->set_contrast(s, 0);       // 对比度 -2~2
+            s->set_saturation(s, 0);     // 饱和度 -2~2
+            s->set_whitebal(s, 1);       // 白平衡开启
+            s->set_awb_gain(s, 1);       // 自动白平衡增益
+            s->set_wb_mode(s, 0);        // 白平衡模式 0-4
+            s->set_aec2(s, 1);           // 自动曝光
+            s->set_gain_ctrl(s, 1);      // 自动增益
+        }
+    }
     
     // Phase 1: 网络连接
     Serial.println("[Phase 1] 网络连接...");
@@ -1157,6 +1646,36 @@ void setup() {
     // OTA路由
     server.on("/ota/status", handleOTAStatus);
     server.on("/ota/check", handleOTACheck);
+    
+    // 摄像头路由
+    server.on("/camera/capture", handleCameraCapture);
+    server.on("/camera/stream", handleCameraStream);
+    server.on("/camera/status", handleCameraStatus);
+    server.on("/vision/control", handleVisionControl);  // 视觉识别开关
+    
+    // 本地人脸检测路由
+    server.on("/face/detect", handleFaceDetect);   // 执行一次人脸检测
+    server.on("/face/status", handleFaceStatus);   // 人脸检测状态
+    server.on("/face/enable", []() {
+        if (!cameraInitialized) {
+            server.send(503, "text/plain", "Camera not ready");
+            return;
+        }
+        if (!ensureCamMode(CAM_DETECT)) {
+            server.send(503, "text/plain", "Camera busy (streaming?)");
+            return;
+        }
+        faceDetectEnabled = true;
+        initFaceDetect();
+        server.send(200, "text/plain", "Face detection enabled (RGB565 160x120)");
+        Serial.println("[FaceDetect] 人脸检测已启用");
+    });
+    server.on("/face/disable", []() {
+        faceDetectEnabled = false;
+        ensureCamMode(CAM_IDLE);
+        server.send(200, "text/plain", "Face detection disabled");
+        Serial.println("[FaceDetect] 人脸检测已禁用");
+    });
     
     server.begin();
     
@@ -1292,6 +1811,12 @@ void loop() {
         registerToBackend();
     }
     
+    // 视觉识别：定期发送帧到后端
+    if (visionEnabled && millis() - lastVisionFrame >= VISION_INTERVAL) {
+        lastVisionFrame = millis();
+        sendFrameToBackend();
+    }
+    
     // 自主导航逻辑
     runAutonomousLogic();
 }
@@ -1333,8 +1858,8 @@ void runAutonomousLogic() {
             break;
             
         case MODE_FOLLOW:
-            // 跟随模式：保持特定距离（需要视觉模块配合）
-            // TODO: 待摄像头模块实现
+            // 跟随模式：本地人脸检测 + 跟随
+            runFaceFollowLoop();
             break;
             
         case MODE_RETURN:

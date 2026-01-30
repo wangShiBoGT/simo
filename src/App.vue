@@ -191,6 +191,9 @@
     <!-- L3：自主避障面板 -->
     <AutonomyPanel />
     
+    <!-- L3：自主导航面板 -->
+    <NavigationPanel />
+    
     <!-- A阶段：状态条 -->
     <StatusBar />
   </div>
@@ -206,6 +209,7 @@ import MotionPanel from './components/MotionPanel.vue'
 import SensorPanel from './components/SensorPanel.vue'
 import StatusBar from './components/StatusBar.vue'
 import AutonomyPanel from './components/AutonomyPanel.vue'
+import NavigationPanel from './components/NavigationPanel.vue'
 
 // 状态
 const isListening = ref(false)

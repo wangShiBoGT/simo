@@ -24,6 +24,10 @@ import { parseToSuggestions, suggestionToIntent, SuggestionQueue } from './seque
 import { FluencyManager } from './fluency/index.js'
 import { parseNLU } from './nlu/index.js'
 import { startAutonomy, stopAutonomy, getAutonomyState, setAutonomyMode, triggerScan } from './autonomy/index.js'
+import { startNavigation, stopNavigation, resetNavigation, getNavState, setNavMode } from './navigation/index.js'
+import { createRequire } from 'module'
+const require = createRequire(import.meta.url)
+const vision = require('./vision.cjs')
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -890,6 +894,76 @@ const handleRequest = async (req, res) => {
     return
   }
   
+  // ============ L3 自主导航接口 ============
+  
+  // 导航控制
+  if (url.pathname === '/api/nav/patrol' && req.method === 'POST') {
+    try {
+      const result = startNavigation('patrol')
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ ...result, state: getNavState(), timestamp: new Date().toISOString() }))
+    } catch (error) {
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: error.message }))
+    }
+    return
+  }
+  
+  if (url.pathname === '/api/nav/follow' && req.method === 'POST') {
+    try {
+      const result = startNavigation('follow')
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ ...result, state: getNavState(), timestamp: new Date().toISOString() }))
+    } catch (error) {
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: error.message }))
+    }
+    return
+  }
+  
+  if (url.pathname === '/api/nav/return' && req.method === 'POST') {
+    try {
+      const result = startNavigation('return')
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ ...result, state: getNavState(), timestamp: new Date().toISOString() }))
+    } catch (error) {
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: error.message }))
+    }
+    return
+  }
+  
+  if (url.pathname === '/api/nav/stop' && req.method === 'POST') {
+    try {
+      const result = stopNavigation()
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ ...result, state: getNavState(), timestamp: new Date().toISOString() }))
+    } catch (error) {
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: error.message }))
+    }
+    return
+  }
+  
+  if (url.pathname === '/api/nav/reset' && req.method === 'POST') {
+    try {
+      const result = resetNavigation()
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ ...result, state: getNavState(), timestamp: new Date().toISOString() }))
+    } catch (error) {
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: error.message }))
+    }
+    return
+  }
+  
+  // 导航状态
+  if (url.pathname === '/api/nav/status' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ ...getNavState(), timestamp: new Date().toISOString() }))
+    return
+  }
+  
   // ============ A 阶段：可见性增强 ============
   
   // 状态汇总接口（只读，不改决策）
@@ -1221,6 +1295,107 @@ const handleRequest = async (req, res) => {
       serial: serialStatus,
       timestamp: new Date().toISOString()
     }))
+    return
+  }
+  
+  // ============ 视觉识别API ============
+  // 接收ESP32上传的帧进行人脸识别
+  if (url.pathname === '/api/vision/frame' && req.method === 'POST') {
+    const chunks = []
+    req.on('data', chunk => chunks.push(chunk))
+    req.on('end', async () => {
+      try {
+        const imageBuffer = Buffer.concat(chunks)
+        const deviceMAC = req.headers['x-device-mac'] || 'unknown'
+        
+        console.log(`📷 [Vision] 收到帧: ${imageBuffer.length} bytes from ${deviceMAC}`)
+        
+        const result = await vision.processFrame(imageBuffer, deviceMAC)
+        
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify(result))
+      } catch (error) {
+        console.error('[Vision] 处理帧错误:', error)
+        res.writeHead(500, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: error.message, action: 'stop' }))
+      }
+    })
+    return
+  }
+  
+  // 视觉识别状态
+  if (url.pathname === '/api/vision/status' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify(vision.getStatus()))
+    return
+  }
+  
+  // ============ 人脸识别API ============
+  // 列出已注册的人脸
+  if (url.pathname === '/api/face/list' && req.method === 'GET') {
+    try {
+      const result = await vision.listFaces()
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(result))
+    } catch (error) {
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ success: false, error: error.message }))
+    }
+    return
+  }
+  
+  // 注册人脸（上传图片）
+  if (url.pathname === '/api/face/register' && req.method === 'POST') {
+    const chunks = []
+    req.on('data', chunk => chunks.push(chunk))
+    req.on('end', async () => {
+      try {
+        const imageBuffer = Buffer.concat(chunks)
+        const personName = req.headers['x-person-name'] || 'unknown'
+        
+        // 保存临时文件
+        const fs = require('fs')
+        const path = require('path')
+        const tempPath = path.join(__dirname, '../temp/register_temp.jpg')
+        fs.writeFileSync(tempPath, imageBuffer)
+        
+        const result = await vision.registerFace(tempPath, personName)
+        
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify(result))
+      } catch (error) {
+        res.writeHead(500, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ success: false, error: error.message }))
+      }
+    })
+    return
+  }
+  
+  // 识别人脸（上传图片进行匹配）
+  if (url.pathname === '/api/face/recognize' && req.method === 'POST') {
+    const chunks = []
+    req.on('data', chunk => chunks.push(chunk))
+    req.on('end', async () => {
+      try {
+        const imageBuffer = Buffer.concat(chunks)
+        
+        // 保存临时文件
+        const fs = require('fs')
+        const path = require('path')
+        const tempPath = path.join(__dirname, '../temp/recognize_temp.jpg')
+        fs.writeFileSync(tempPath, imageBuffer)
+        
+        const result = await vision.recognizeFace(tempPath)
+        
+        console.log(`👤 [Face] 识别结果: ${result.is_owner ? '主人' : (result.recognized ? result.known_names.join(',') : '未知')}`)
+        
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify(result))
+      } catch (error) {
+        res.writeHead(500, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ success: false, error: error.message }))
+      }
+    })
     return
   }
   

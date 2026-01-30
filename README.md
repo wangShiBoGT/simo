@@ -40,6 +40,20 @@ npm run dev
 http://localhost:3000
 ```
 
+### 🐳 Docker 部署（推荐）
+
+```bash
+# 本地构建测试
+docker build -t simo-api .
+docker run -p 3001:3001 simo-api
+
+# 或部署到 Render.com
+# 1. Fork 本仓库到 GitHub
+# 2. 在 Render 创建 Web Service
+# 3. 选择 Docker 环境
+# 4. 自动识别 Dockerfile
+```
+
 ### 默认配置
 - **大模型**: 智谱 GLM-4-flash（免费）
 - **语音合成**: Edge TTS（微软神经语音，免费）
@@ -180,7 +194,7 @@ L2 简单移动 ← 当前进度
 │   └── ✅ 中文口语化语音控制已完成
 │   └── ✅ A阶段可见性增强已完成
 │
-L3 智能交互 ← 架构设计中
+L3 智能交互 ← 已完成
     └── 视觉边界 + 人脸识别 + 长对话 + 自主导航
     └── 详见 `docs/l3-architecture.md`
 ```
@@ -302,9 +316,162 @@ L3 智能交互 ← 架构设计中
 | 架构设计 | ✅ 完成 | 详见 `docs/l3-architecture.md` |
 | 记忆系统 | ✅ 完成 | 可信记忆 + 家庭成员 |
 | 对话服务 | ✅ 完成 | 多模型支持 + 情感TTS |
-| 视觉边界 | ⏳ 待开发 | 需要 OV2640 摄像头 |
-| 人脸识别 | ⏳ 待开发 | ESP-WHO 框架 |
-| 自主导航 | ⏳ 待开发 | 需要连线测试 |
+| 视觉边界 | ✅ 完成 | OV3660摄像头驱动已集成 |
+| 人脸识别 | ✅ 完成 | ESP32本地检测 + MediaPipe后端 |
+| 自主导航 | ✅ 完成 | 巡逻/跟随/返航模式 |
+
+### 自主导航系统（2026-01-30 更新）
+
+**导航模式**：
+| 模式 | 说明 |
+|------|------|
+| **巡逻 (patrol)** | 自动探索，避障前进，记录路径 |
+| **跟随 (follow)** | 跟随检测到的人脸移动 |
+| **返航 (return)** | 沿记录路径反向返回起点 |
+
+**导航 API**：
+| API | 方法 | 功能 |
+|-----|------|------|
+| `/api/nav/patrol` | POST | 启动巡逻模式 |
+| `/api/nav/follow` | POST | 启动跟随模式 |
+| `/api/nav/return` | POST | 启动返航模式 |
+| `/api/nav/stop` | POST | 停止导航 |
+| `/api/nav/reset` | POST | 重置导航（清空路径） |
+| `/api/nav/status` | GET | 获取导航状态 |
+
+**核心文件**：
+- `server/navigation/navigation.manager.js` - 导航状态机
+- `server/navigation/index.js` - 模块导出
+- `src/components/NavigationPanel.vue` - 前端控制面板
+
+**状态机**：
+```
+[空闲] → [巡逻/跟随] → [检测障碍/边界] → [避障/转向] → [继续]
+  ↑                           ↓
+  └──────────────────── [停止]
+```
+
+### ESP32 本地人脸检测（2026-01-30 更新）
+
+**新增文件**：
+- `esp32/src/face_detect.h` - 人脸检测配置和接口定义
+- `esp32/src/face_detect.cpp` - 人脸检测实现（肤色+运动检测算法）
+
+**新增 API**：
+| API | 功能 |
+|-----|------|
+| `/face/detect` | 执行一次人脸检测，返回位置和跟随方向 |
+| `/face/status` | 获取人脸检测状态（含摄像头模式） |
+| `/face/enable` | 启用人脸检测（自动切换到 RGB565 模式） |
+| `/face/disable` | 禁用人脸检测 |
+
+**检测 vs 识别**：
+| 功能 | 实现位置 | 算法 | 需要人脸照片？ |
+|------|----------|------|----------------|
+| **人脸检测** | ESP32 本地 | 肤色+运动检测 | ❌ 不需要 |
+| **人脸识别** | Node 后端 | Haar+直方图匹配 | ✅ 需要 |
+
+**后端人脸识别 API**：
+| API | 方法 | 功能 |
+|-----|------|------|
+| `/api/face/list` | GET | 列出已注册的人脸 |
+| `/api/face/register` | POST | 注册人脸（Header: X-Person-Name） |
+| `/api/face/recognize` | POST | 识别人脸，返回 is_owner 和 known_names |
+
+**命令行工具**：
+```bash
+# 注册人脸
+python scripts/face_recognize.py register "照片路径" "姓名"
+
+# 识别人脸
+python scripts/face_recognize.py recognize "照片路径"
+
+# 列出已注册
+python scripts/face_recognize.py list
+```
+
+**硬件接线（GPIO 冲突已修复）**：
+```
+ESP32-S3          STM32
+GPIO38 (TX)  -->  PA10 (RX)
+GPIO39 (RX)  <--  PA9  (TX)
+GND          ---  GND
+```
+> ⚠️ 注意：GPIO4/5 已被摄像头 SCCB 占用，STM32 串口必须使用 GPIO38/39
+
+**摄像头模式互斥**：
+| 模式 | 格式 | 分辨率 | 用途 |
+|------|------|--------|------|
+| CAM_IDLE | JPEG | 320×240 | 空闲 |
+| CAM_STREAM | JPEG | 320×240 | MJPEG 视频流（独占） |
+| CAM_DETECT | RGB565 | 160×120 | 人脸检测 |
+| CAM_VISION | JPEG | 640×480 | 后端识别 |
+| CAM_CAPTURE | JPEG | 640×480 | 高清拍照 |
+
+**检测优化**：
+- **运动门控**：500ms 无运动不输出，减少静态误报
+- **EMA 平滑**：跟随方向使用指数移动平均，减少抖动
+- **滞回控制**：方向切换需超过阈值，避免频繁震荡
+
+**跟随方向计算**：
+```
+人脸在左侧 → DIR_LEFT → 左转
+人脸在右侧 → DIR_RIGHT → 右转
+人脸太小 → DIR_FORWARD → 前进靠近
+人脸太大 → DIR_BACKWARD → 后退
+人脸居中 → DIR_CENTER → 保持
+```
+
+### 视觉识别系统（2026-01-27 更新）
+
+**当前固件版本：v2.5.0**
+
+#### 架构设计
+```
+ESP32 (OV3660摄像头) → Node后端 (vision.js) → Python (face_detect.py) → 控制指令
+      ↓                      ↓                       ↓
+   QVGA 320×240        只处理最新帧            MediaPipe检测
+   每500ms一帧          防止队列堆积           ~50ms推理延迟
+```
+
+#### 关键优化
+| 优化项 | 说明 |
+|--------|------|
+| **只处理最新帧** | 新帧覆盖旧帧，不排队，防止延迟堆积 |
+| **二进制传输** | HTTP POST JPEG，不做base64转码 |
+| **分段计时** | 返回`timing.latency`统计端到端延迟 |
+| **三级检测回退** | MediaPipe → OpenCV DNN → Haar级联 |
+
+#### 新增文件
+| 文件 | 功能 |
+|------|------|
+| `esp32/src/camera_config.h` | OV3660摄像头引脚和参数配置 |
+| `server/vision.js` | 视觉识别服务（只处理最新帧策略） |
+| `scripts/face_detect.py` | Python人脸检测（MediaPipe优先） |
+
+#### 新增API
+| API | 方法 | 功能 |
+|-----|------|------|
+| `/camera/capture` | GET | 拍照（VGA高清） |
+| `/camera/stream` | GET | MJPEG视频流（QVGA低延迟） |
+| `/camera/status` | GET | 摄像头状态 |
+| `/vision/control?action=start` | GET | 启动视觉识别 |
+| `/vision/control?action=stop` | GET | 停止视觉识别 |
+| `/api/vision/frame` | POST | 接收ESP32上传的帧（Node后端） |
+| `/api/vision/status` | GET | 视觉识别状态统计（Node后端） |
+
+#### 摄像头参数
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| 预览分辨率 | QVGA 320×240 | 低延迟实时流 |
+| 拍照分辨率 | VGA 640×480 | 高清用于识别 |
+| JPEG质量 | 20 | 约15-25KB/帧 |
+| 帧间隔 | 500ms | 2fps用于识别 |
+
+#### 依赖安装
+```bash
+pip install opencv-python mediapipe
+```
 
 **Node后端新增API（2026-01-26）**：
 | API | 方法 | 功能 |

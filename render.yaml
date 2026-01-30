@@ -1,12 +1,11 @@
-# Render 部署配置
-# 在 render.com 创建 Web Service 时会自动识别
+# Render 部署配置 (Docker 模式，支持 Node + Python)
+# 在 render.com 创建 Web Service 时选择 Docker
 
 services:
   - type: web
     name: simo-api
-    env: node
-    buildCommand: npm install
-    startCommand: node server/index.js
+    env: docker
+    dockerfilePath: ./Dockerfile
     envVars:
       - key: NODE_ENV
         value: production
