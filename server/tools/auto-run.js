@@ -7,7 +7,7 @@
  * - 传感器驱动行为
  */
 
-import fetch from 'node-fetch';
+// Node.js 18+ 内置 fetch，无需导入
 
 const SIMO_URL = 'http://localhost:3001';
 
@@ -23,10 +23,10 @@ async function startAutoRun() {
     
     // 2. 启动自主避障模式
     console.log('🤖 启动自主避障模式（exploring）...');
-    const autonomyRes = await fetch(`${SIMO_URL}/api/autonomy/start`, {
+    const autonomyRes = await fetch(`${SIMO_URL}/api/autonomy`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: 'exploring' })
+      body: JSON.stringify({ action: 'start', mode: 'exploring' })
     });
     const autonomy = await autonomyRes.json();
     console.log(`✅ ${autonomy.message}\n`);
@@ -58,7 +58,7 @@ async function startAutoRun() {
         iteration++;
         
         // 获取自主模式状态
-        const stateRes = await fetch(`${SIMO_URL}/api/autonomy/state`);
+        const stateRes = await fetch(`${SIMO_URL}/api/autonomy`);
         const state = await stateRes.json();
         
         // 获取传感器数据
@@ -130,9 +130,10 @@ const command = process.argv[2];
 
 if (command === 'stop') {
   // 停止自主运行
-  fetch(`${SIMO_URL}/api/autonomy/stop`, {
+  fetch(`${SIMO_URL}/api/autonomy`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' }
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'stop' })
   })
     .then(res => res.json())
     .then(data => {
@@ -144,7 +145,7 @@ if (command === 'stop') {
     });
 } else if (command === 'status') {
   // 查询状态
-  fetch(`${SIMO_URL}/api/autonomy/state`)
+  fetch(`${SIMO_URL}/api/autonomy`)
     .then(res => res.json())
     .then(state => {
       console.log('📊 自主运行状态:');
