@@ -140,7 +140,8 @@ export default {
     serial: {
       enabled: true,  // 启用串口通信
       port: 'COM6',   // ESP32-S3 串口端口
-      baudRate: 115200  // Simo固件使用 115200
+      baudRate: 115200,  // Simo固件使用 115200
+      motionProtocol: 'm-v1'  // 启用速度参数支持
     },
     
     // GPIO（树莓派等）

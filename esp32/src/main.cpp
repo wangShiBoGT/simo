@@ -53,7 +53,7 @@
 // 运动协议配置（选择与STM32固件匹配的协议）
 // "simple" = simo_robot_simple固件: F,<ms> / B,<ms> / L,<ms> / R,<ms> / S
 // "m-v1"   = simo_robot固件: M,forward,speed,duration / S
-#define MOTION_PROTOCOL "simple"
+#define MOTION_PROTOCOL "m-v1"  // 启用速度参数支持
 
 // 版本信息
 #define FIRMWARE_VERSION "2.5.0"

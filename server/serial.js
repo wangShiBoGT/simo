@@ -248,7 +248,7 @@ export const send = (command) => {
  * @param {number} speed - 速度 0~1（simple协议忽略）
  * @param {number} durationMs - 持续时间 ms
  */
-export const sendMove = (direction, speed = 0.5, durationMs = 500) => {
+export const sendMove = (direction, speed = 0.8, durationMs = 500) => {
   // 从配置读取duration限制（单一事实来源：hardware.config.js）
   const motionLimits = config.motionLimits || { maxDuration: 2000, minDuration: 100 }
   
