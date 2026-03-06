@@ -1,0 +1,90 @@
+{
+  "functions": [
+    {
+      "name": "simo_move",
+      "description": "控制 Simo 小车移动。前进或后退指定时长。如检测到障碍物会被安全系统阻止。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "direction": {
+            "type": "string",
+            "enum": ["F", "B"],
+            "description": "移动方向：F=前进，B=后退"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "enum": [400, 800, 1200],
+            "description": "移动时长（毫秒）：400=短距离，800=中距离，1200=长距离"
+          }
+        },
+        "required": ["direction"]
+      }
+    },
+    {
+      "name": "simo_turn",
+      "description": "控制 Simo 小车转向。左转或右转指定时长。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "direction": {
+            "type": "string",
+            "enum": ["L", "R"],
+            "description": "转向方向：L=左转，R=右转"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "enum": [400, 800, 1200],
+            "description": "转向时长（毫秒）"
+          }
+        },
+        "required": ["direction"]
+      }
+    },
+    {
+      "name": "simo_stop",
+      "description": "紧急停止 Simo 小车所有动作。此命令最高优先级，永远可用。",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "simo_status",
+      "description": "查询 Simo 小车当前状态：运动状态、安全状态、传感器数据等。",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "simo_autonomy",
+      "description": "控制 Simo 自主避障模式。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["start", "stop"],
+            "description": "start=启动自主避障，stop=停止"
+          }
+        },
+        "required": ["action"]
+      }
+    },
+    {
+      "name": "simo_navigate",
+      "description": "控制 Simo 导航功能：巡逻、跟随、返航。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": ["patrol", "follow", "return", "stop"],
+            "description": "patrol=巡逻模式，follow=跟随模式，return=返航，stop=停止导航"
+          }
+        },
+        "required": ["mode"]
+      }
+    }
+  ]
+}

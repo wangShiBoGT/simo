@@ -139,7 +139,7 @@ export default {
     // 与硬件控制器通信（STM32 小车）
     serial: {
       enabled: true,  // 启用串口通信
-      port: 'COM5',   // USB转串口端口
+      port: 'COM6',   // ESP32-S3 串口端口
       baudRate: 115200  // Simo固件使用 115200
     },
     
@@ -234,5 +234,36 @@ export default {
     enabled: false,
     // 已授权的MAC地址列表（空表示允许所有）
     allowedMACs: []
+  },
+  
+  // ============ 工具 API 配置（miniClaw 集成用） ============
+  toolApi: {
+    // Token 鉴权（留空则跳过鉴权，开发模式）
+    // 生产环境请设置环境变量 SIMO_TOOL_TOKEN
+    token: '',
+    
+    // 速率限制（令牌桶算法）
+    rateLimit: {
+      tokensPerSecond: 2,   // 每秒补充的 token 数
+      bucketSize: 4         // 桶容量（允许突发请求数）
+    },
+    
+    // 工具能力声明（供外部工具协商）
+    capabilities: {
+      intentExecute: true,   // 结构化意图执行
+      emergencyStop: true,   // 紧急停止（永远可用）
+      motionControl: true,   // 运动控制
+      navigation: true,      // 导航（巡逻/跟随/返航）
+      autonomy: true,        // 自主避障
+      sensors: true          // 传感器读取
+    }
+  },
+  
+  // ============ WebSocket 服务器配置 ============
+  websocket: {
+    enabled: true,
+    port: 18790,              // MimiClaw 用 18789，Simo 用 18790
+    maxClients: 10,           // 最大客户端数
+    sensorBroadcastInterval: 1000  // 传感器数据广播间隔（毫秒）
   }
 }

@@ -17,7 +17,7 @@ import { dirname, join } from 'path'
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts'
 import * as serial from './serial.js'
 import hardwareConfig from './hardware.config.js'
-import { parseIntentLocal, IntentType, shouldExecute, getState, forceStop, RobotState } from './intent/index.js'
+import { parseIntentLocal, IntentType, shouldExecute, getState, forceStop, RobotState, validateIntent, DurationPresets } from './intent/index.js'
 import { ConfirmManager } from './confirm/index.js'
 import { SafetyManager } from './safety/index.js'
 import { parseToSuggestions, suggestionToIntent, SuggestionQueue } from './sequence/index.js'
@@ -25,6 +25,7 @@ import { FluencyManager } from './fluency/index.js'
 import { parseNLU } from './nlu/index.js'
 import { startAutonomy, stopAutonomy, getAutonomyState, setAutonomyMode, triggerScan } from './autonomy/index.js'
 import { startNavigation, stopNavigation, resetNavigation, getNavState, setNavMode } from './navigation/index.js'
+import { SimoWebSocketServer } from './websocket.js'
 import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
 const vision = require('./vision.cjs')
@@ -33,6 +34,82 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 const PORT = 3001
+
+// ============ 工具 API 安全层 ============
+// Token 鉴权（从环境变量或配置读取）
+const TOOL_API_TOKEN = process.env.SIMO_TOOL_TOKEN || hardwareConfig.toolApi?.token || ''
+
+// 速率限制状态（令牌桶算法）
+const rateLimitBuckets = new Map()
+
+/**
+ * 检查是否为写接口（需要鉴权和限流）
+ */
+function isWriteRoute(pathname, method) {
+  const writePrefixes = [
+    '/api/hardware/motion',
+    '/api/nav/',
+    '/api/autonomy',
+    '/api/intent/execute',
+    '/api/esp32/ota/push',
+    '/api/face/register'
+  ]
+  // STOP 类接口永远允许，不做限流
+  if (pathname === '/api/intent/stop' || pathname === '/api/nav/stop') {
+    return false
+  }
+  return method !== 'GET' && writePrefixes.some(p => pathname.startsWith(p))
+}
+
+/**
+ * Token 鉴权检查
+ */
+function checkToolAuth(req, pathname, method) {
+  // 如果未配置 token，跳过鉴权（开发模式）
+  if (!TOOL_API_TOKEN) {
+    return { ok: true }
+  }
+  if (!isWriteRoute(pathname, method)) {
+    return { ok: true }
+  }
+  const token = req.headers['x-simo-token']
+  if (token !== TOOL_API_TOKEN) {
+    return { ok: false, code: 401, error: '缺少或无效的 X-Simo-Token' }
+  }
+  return { ok: true }
+}
+
+/**
+ * 速率限制检查（令牌桶算法：每秒补 2 个 token，桶容量 4）
+ */
+function checkRateLimit(req, pathname, method) {
+  if (!isWriteRoute(pathname, method)) {
+    return { ok: true }
+  }
+  
+  const key = req.headers['x-simo-token'] || req.socket?.remoteAddress || 'unknown'
+  const now = Date.now()
+  const config = hardwareConfig.toolApi?.rateLimit || { tokensPerSecond: 2, bucketSize: 4 }
+  
+  let bucket = rateLimitBuckets.get(key)
+  if (!bucket) {
+    bucket = { tokens: config.bucketSize, lastRefillMs: now }
+  }
+  
+  // 补充 token
+  const elapsed = (now - bucket.lastRefillMs) / 1000
+  bucket.tokens = Math.min(config.bucketSize, bucket.tokens + elapsed * config.tokensPerSecond)
+  bucket.lastRefillMs = now
+  
+  if (bucket.tokens < 1) {
+    rateLimitBuckets.set(key, bucket)
+    return { ok: false, code: 429, error: '请求过于频繁，请稍后再试' }
+  }
+  
+  bucket.tokens -= 1
+  rateLimitBuckets.set(key, bucket)
+  return { ok: true }
+}
 
 // ============ C 阶段：建议队列 ============
 const suggestionQueue = new SuggestionQueue();
@@ -1242,6 +1319,139 @@ const handleRequest = async (req, res) => {
     return
   }
   
+  // ============ 结构化意图执行接口（工具调用专用） ============
+  // 符合 BEHAVIOR.md 宣言：结构化参数 + 白名单校验 + Guard/Confirm/Safety 链路
+  if (url.pathname === '/api/intent/execute' && req.method === 'POST') {
+    try {
+      // 鉴权检查
+      const authResult = checkToolAuth(req, url.pathname, req.method)
+      if (!authResult.ok) {
+        res.writeHead(authResult.code, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: authResult.error }))
+        return
+      }
+      
+      // 速率限制
+      const rateResult = checkRateLimit(req, url.pathname, req.method)
+      if (!rateResult.ok) {
+        res.writeHead(rateResult.code, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: rateResult.error }))
+        return
+      }
+      
+      const body = await parseBody(req)
+      const { intent, direction, duration_ms, confidence = 1.0, source = 'tool' } = body
+      
+      console.log(`🔧 [Tool API] 结构化意图: ${intent} ${direction || ''} ${duration_ms || ''} (来源: ${source})`)
+      
+      // 1. STOP 永远最高优先级，直接执行
+      if (intent === 'STOP') {
+        console.log(`   → STOP 最高优先级，直接执行`)
+        suggestionQueue.clear('tool_stop')
+        fluencyManager.clear('tool_stop')
+        
+        if (confirmManager.isAwaiting()) {
+          await confirmManager.forceStop()
+        }
+        
+        const serialStatus = serial.getStatus()
+        if (serialStatus.connected) {
+          serial.sendStop()
+        }
+        forceStop()
+        
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({
+          success: true,
+          intent: { intent: 'STOP' },
+          executed: serialStatus.connected,
+          state: getState()
+        }))
+        return
+      }
+      
+      // 2. 构建意图对象
+      const intentObj = {
+        intent: intent,
+        direction: direction || null,
+        duration_ms: duration_ms || DurationPresets.MEDIUM,
+        confidence: confidence,
+        raw_text: `[Tool:${source}] ${intent} ${direction || ''}`
+      }
+      
+      // 3. 白名单校验（使用 intent.schema.js 的 validateIntent）
+      const validation = validateIntent(intentObj)
+      if (!validation.valid) {
+        console.log(`   → 校验失败: ${validation.errors.join(', ')}`)
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({
+          success: false,
+          error: '参数校验失败',
+          details: validation.errors,
+          hint: {
+            intent: ['MOVE', 'TURN', 'STOP', 'QUERY'],
+            direction: { MOVE: ['F', 'B'], TURN: ['L', 'R'] },
+            duration_ms: [400, 800, 1200]
+          }
+        }))
+        return
+      }
+      
+      // 4. 安全状态检查
+      if (safetyManager.isBlocked()) {
+        const blockReason = safetyManager.getBlockReason()
+        console.log(`   → 安全阻止: ${blockReason?.reason}`)
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({
+          success: false,
+          error: '安全阻止',
+          blocked: true,
+          reason: blockReason?.reason,
+          safety: safetyManager.getState(),
+          state: getState()
+        }))
+        return
+      }
+      
+      // 5. 状态机守卫判断
+      const guardDecision = shouldExecute(intentObj)
+      console.log(`   → Guard: ${guardDecision.execute ? '通过' : '拒绝'} (${guardDecision.reason})`)
+      
+      if (!guardDecision.execute) {
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({
+          success: false,
+          intent: intentObj,
+          decision: guardDecision,
+          state: getState()
+        }))
+        return
+      }
+      
+      // 6. 确认层处理
+      const robotState = getState().state
+      const confirmResult = await confirmManager.handleAllowedIntent(intentObj, robotState)
+      console.log(`   → 确认层: ${confirmResult.status}`)
+      
+      // 返回结果
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({
+        success: confirmResult.status === 'EXECUTED',
+        intent: intentObj,
+        decision: guardDecision,
+        confirm: confirmResult,
+        awaiting: confirmManager.isAwaiting(),
+        state: getState()
+      }))
+      
+    } catch (error) {
+      console.error('[Tool API] 执行错误:', error)
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: error.message }))
+    }
+    return
+  }
+  
   // 紧急停止接口
   if (url.pathname === '/api/intent/stop' && req.method === 'POST') {
     console.log('🛑 紧急停止')
@@ -1586,21 +1796,148 @@ const initSerial = async () => {
   }
 }
 
+// ============ WebSocket 服务器 ============
+// 创建 WebSocket 服务器实例，连接到现有功能
+const wsServer = new SimoWebSocketServer({
+  port: hardwareConfig.websocket?.port || 18790,
+  // 处理器函数（连接到现有功能）
+  executeIntent: async (params) => {
+    const intentObj = {
+      intent: params.intent,
+      direction: params.direction || null,
+      duration_ms: params.duration_ms || DurationPresets.MEDIUM,
+      confidence: 1.0,
+      raw_text: `[WebSocket] ${params.intent} ${params.direction || ''}`
+    }
+    
+    // 白名单校验
+    const validation = validateIntent(intentObj)
+    if (!validation.valid) {
+      return { success: false, error: '参数校验失败', details: validation.errors }
+    }
+    
+    // 安全检查
+    if (safetyManager.isBlocked()) {
+      const blockReason = safetyManager.getBlockReason()
+      return { success: false, blocked: true, reason: blockReason?.reason, safety: safetyManager.getState() }
+    }
+    
+    // 守卫判断
+    const guardDecision = shouldExecute(intentObj)
+    if (!guardDecision.execute) {
+      return { success: false, intent: intentObj, decision: guardDecision }
+    }
+    
+    // 确认层处理
+    const robotState = getState().state
+    const confirmResult = await confirmManager.handleAllowedIntent(intentObj, robotState)
+    
+    return {
+      success: confirmResult.status === 'EXECUTED',
+      intent: intentObj,
+      decision: guardDecision,
+      confirm: confirmResult,
+      awaiting: confirmManager.isAwaiting(),
+      state: getState()
+    }
+  },
+  
+  queryState: async () => {
+    return getState()
+  },
+  
+  querySensors: async () => {
+    return serial.getSensorData()
+  },
+  
+  queryHardware: async () => {
+    const serialStatus = serial.getStatus()
+    return {
+      success: true,
+      hardware: {
+        display: { connected: false, type: null },
+        audio: { connected: true, type: 'browser' },
+        vision: { connected: false, type: null },
+        motion: { connected: serialStatus.connected, type: 'serial' },
+        sensors: { connected: serialStatus.connected, type: 'stm32' }
+      },
+      capabilities: hardwareConfig.capabilities || {},
+      protocol: hardwareConfig.protocol || { version: 'simple' },
+      level: hardwareConfig.level || 'L0',
+      serial: serialStatus
+    }
+  },
+  
+  emergencyStop: async () => {
+    forceStop()
+    const serialStatus = serial.getStatus()
+    if (serialStatus.connected) {
+      serial.sendStop()
+    }
+    return {
+      executed: serialStatus.connected,
+      state: getState()
+    }
+  },
+  
+  parseIntent: async (text) => {
+    // 调用 NLU 解析
+    const nluResult = await parseNLU(text, { enableLLM: false })
+    const intent = nluResult.intent
+    
+    if (!intent || nluResult.source === 'none') {
+      return {
+        intent: { intent: 'NONE', confidence: 0.3, raw_text: text },
+        decision: { execute: false, reason: '无法解析意图' }
+      }
+    }
+    
+    const guardDecision = shouldExecute(intent)
+    if (!guardDecision.execute) {
+      return { intent, decision: guardDecision, executed: false }
+    }
+    
+    const robotState = getState().state
+    const confirmResult = await confirmManager.handleAllowedIntent(intent, robotState)
+    
+    return {
+      intent,
+      decision: guardDecision,
+      confirm: confirmResult,
+      awaiting: confirmManager.isAwaiting(),
+      state: getState()
+    }
+  }
+})
+
 server.listen(PORT, async () => {
   // 启动后初始化串口
   await initSerial()
+  
+  // 启动 WebSocket 服务器
+  wsServer.start()
+  
+  // 订阅传感器更新，广播给 WebSocket 客户端
+  setInterval(() => {
+    const sensors = serial.getSensorData()
+    if (wsServer.clients.size > 0 && sensors.ultrasonic?.distance !== null) {
+      wsServer.broadcastSensorData(sensors)
+    }
+  }, 1000)  // 每秒广播一次
   
   console.log(`
   ╔═══════════════════════════════════════════════╗
   ║                                               ║
   ║   🤖 Simo Server 已启动                       ║
-  ║   端口: ${PORT}                                  ║
+  ║   HTTP: ${PORT}   WebSocket: ${wsServer.port}                ║
   ║   硬件等级: L0（纯软件）                      ║
   ║                                               ║
   ║   核心接口:                                   ║
   ║   - POST /api/chat         对话              ║
   ║   - POST /api/tts/edge     语音合成          ║
   ║   - POST /api/tts/baidu    百度语音          ║
+  ║   - POST /api/intent/execute  结构化执行     ║
+  ║   - WS   ws://localhost:${wsServer.port}  实时通信       ║
   ║                                               ║
   ║   硬件接口（已预埋）:                         ║
   ║   - POST /api/hardware/display   显示控制    ║

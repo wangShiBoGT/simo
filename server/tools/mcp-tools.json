@@ -1,0 +1,122 @@
+{
+  "name": "simo-mcp-server",
+  "version": "1.0.0",
+  "description": "Simo 智能小车 MCP 工具服务器",
+  
+  "tools": [
+    {
+      "name": "simo_execute_intent",
+      "description": "执行结构化意图。这是与 Simo 交互的核心接口，所有动作都经过安全链路验证。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "intent": {
+            "type": "string",
+            "enum": ["MOVE", "TURN", "STOP", "QUERY"],
+            "description": "意图类型"
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["F", "B", "L", "R"],
+            "description": "方向：F=前，B=后，L=左，R=右"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "enum": [400, 800, 1200],
+            "description": "时长（毫秒）"
+          }
+        },
+        "required": ["intent"]
+      }
+    },
+    {
+      "name": "simo_emergency_stop",
+      "description": "紧急停止。最高优先级，永远可用，立即中断所有动作。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "simo_get_state",
+      "description": "获取 Simo 完整状态：运动状态、安全状态、确认状态、传感器数据。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "simo_get_sensors",
+      "description": "获取传感器数据：超声波距离、红外避障状态。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "simo_autonomy_control",
+      "description": "控制自主避障模式。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["start", "stop", "status"],
+            "description": "操作"
+          }
+        },
+        "required": ["action"]
+      }
+    },
+    {
+      "name": "simo_navigation_control",
+      "description": "控制导航模式：巡逻、跟随、返航。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": ["patrol", "follow", "return", "stop"],
+            "description": "导航模式"
+          }
+        },
+        "required": ["mode"]
+      }
+    }
+  ],
+  
+  "resources": [
+    {
+      "uri": "simo://state",
+      "name": "Simo 状态",
+      "description": "实时获取 Simo 小车状态",
+      "mimeType": "application/json"
+    },
+    {
+      "uri": "simo://sensors",
+      "name": "传感器数据",
+      "description": "实时传感器数据",
+      "mimeType": "application/json"
+    },
+    {
+      "uri": "simo://capabilities",
+      "name": "能力声明",
+      "description": "Simo 支持的功能列表",
+      "mimeType": "application/json"
+    }
+  ],
+  
+  "prompts": [
+    {
+      "name": "simo_safety_rules",
+      "description": "Simo 安全规则提示",
+      "arguments": []
+    }
+  ],
+  
+  "configuration": {
+    "transport": "http",
+    "baseUrl": "http://localhost:3001",
+    "authHeader": "X-Simo-Token"
+  }
+}
